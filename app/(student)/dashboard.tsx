@@ -10,6 +10,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useState } from "react";
 import { Bell, Upload, ChevronRight } from "lucide-react-native";
+import { router } from "expo-router";
+
 
 const { width } = Dimensions.get("window");
 
@@ -96,13 +98,18 @@ export default function Home() {
           </View>
 
           {/* Upload Activity Button */}
-          <TouchableOpacity style={styles.uploadButton}>
-            <View style={styles.uploadIconWrapper}>
-              <Upload size={22} color="#FFFFFF" strokeWidth={2.5} />
-            </View>
-            <Text style={styles.uploadButtonText}>Upload Activity</Text>
-            <ChevronRight size={20} color="#FFFFFF" strokeWidth={2.5} />
-          </TouchableOpacity>
+          {/* Create Activity Button */}
+<TouchableOpacity
+  style={styles.uploadButton}
+  onPress={() => router.push("/(student)/create-activity")}
+>
+  <View style={styles.uploadIconWrapper}>
+    <Upload size={22} color="#FFFFFF" strokeWidth={2.5} />
+  </View>
+  <Text style={styles.uploadButtonText}>Create Activity</Text>
+  <ChevronRight size={20} color="#FFFFFF" strokeWidth={2.5} />
+</TouchableOpacity>
+
 
           {/* Institute Badge */}
           <View style={styles.instituteBadge}>
