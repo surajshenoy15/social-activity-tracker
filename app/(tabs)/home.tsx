@@ -3,389 +3,388 @@ import {
   Text,
   StyleSheet,
   Image,
-  ImageBackground,
   TouchableOpacity,
   Dimensions,
+  StatusBar,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useNavigation } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { Pressable } from "react-native";
-
+import { useEffect } from "react";
 
 const { width, height } = Dimensions.get("window");
 
 export default function Home() {
+  const navigation = useNavigation();
+
+  // Hide the bottom tab bar on this login screen
+  useEffect(() => {
+    const parent = navigation.getParent();
+    parent?.setOptions({ tabBarStyle: { display: "none" } });
+    return () => {
+      parent?.setOptions({ tabBarStyle: undefined });
+    };
+  }, [navigation]);
+
   return (
-    <ImageBackground
-      source={require("../../assets/images/bg/login_header.png")}
-      style={styles.bg}
-      resizeMode="cover"
-    >
+    <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
+      <StatusBar barStyle="light-content" backgroundColor="#0d3352" />
+
+      {/* ── Top Hero Section ── */}
       <LinearGradient
-        colors={["rgba(255,255,255,0.7)", "rgba(240,248,245,0.8)", "rgba(255,255,255,0.7)"]}
-        style={styles.gradient}
+        colors={["#0d3352", "#1a5f8a", "#2271a3"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.hero}
       >
-        <SafeAreaView style={styles.container}>
-          {/* Header Section */}
-          <View style={styles.header}>
-            <Text style={styles.welcome}>Welcome to</Text>
-            <Text style={styles.title}>Social Activity Tracker</Text>
-            <Text style={styles.subtitle}>
-              Track, Earn Certificates and Get Rewarded !
-            </Text>
+        {/* Decorative circles */}
+        <View style={styles.decorCircle1} />
+        <View style={styles.decorCircle2} />
 
-            {/* Logos */}
-            <View style={styles.logosContainer}>
-              <View style={styles.logoCircle}>
-                <Text style={styles.logoText}>VTU</Text>
-              </View>
-              <View style={styles.dividerContainer}>
-                <View style={styles.dividerLine} />
-              </View>
-              <View style={styles.logoCircleAICTE}>
-                <Text style={styles.logoTextAICTE}>AICTE</Text>
-              </View>
-            </View>
+        {/* Brand */}
+        <View style={styles.brandRow}>
+          {/* Vikasana logo — replace Image src with your actual asset */}
+          <View style={styles.logoBadge}>
+            
+                <Image source={require("../../assets/images/vikasana_logo.png")} style={styles.logoImg} resizeMode="contain" /> 
+           
+            
           </View>
-
-          {/* Hero Image */}
-          <View style={styles.heroContainer}>
-            <Image
-              source={require("../../assets/images/bg/login_header.png")}
-              style={styles.heroImage}
-              resizeMode="cover"
-            />
+          <View>
+            <Text style={styles.brandName}>Vikasana Foundation</Text>
+            <Text style={styles.brandTagline}>Empowering Communities</Text>
           </View>
+        </View>
 
-          {/* Login Cards */}
-          <View style={styles.cardsContainer}>
-            <View style={styles.cardsRow}>
-              <View style={styles.card}>
-                <View style={styles.imageContainer}>
-                  <Image 
-                    source={require("../../assets/images/roles/student.png")} 
-                    style={styles.roleImage}
-                    resizeMode="contain"
-                  />
-                </View>
-                <Text style={styles.cardTitle}>Student</Text>
-                <Text style={styles.cardSubtitle}>Login</Text>
-                <TouchableOpacity 
-                  style={styles.cardButton}
-                  onPress={() => router.push("/student-login")
-}
-                >
-                  <Text style={styles.cardButtonText}>Student Login</Text>
-                  <Text style={styles.cardButtonArrow}>›</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.card}>
-                <View style={styles.imageContainer}>
-                  <Image 
-                    source={require("../../assets/images/roles/faculty.png")} 
-                    style={styles.roleImage}
-                    resizeMode="contain"
-                  />
-                </View>
-                <Text style={styles.cardTitle}>Faculty</Text>
-                <Text style={styles.cardSubtitle}>Login</Text>
-                <TouchableOpacity 
-                  style={styles.cardButton}
-                  onPress={() => router.replace("/(tabs)/home")}
-                >
-                  <Text style={styles.cardButtonText}>Faculty Login</Text>
-                  <Text style={styles.cardButtonArrow}>›</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.card}>
-                <View style={styles.imageContainer}>
-                  <Image 
-                    source={require("../../assets/images/roles/admin.png")} 
-                    style={styles.roleImage}
-                    resizeMode="contain"
-                  />
-                </View>
-                <Text style={styles.cardTitle}>Admin</Text>
-                <Text style={styles.cardSubtitle}>Login</Text>
-                <TouchableOpacity 
-                  style={styles.cardButton}
-                  onPress={() => router.replace("/(tabs)/home")}
-                >
-                  <Text style={styles.cardButtonText}>Admin Login</Text>
-                  <Text style={styles.cardButtonArrow}>›</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-
-          {/* Footer */}
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Made for</Text>
-            <Text style={styles.footerTitle}>
-              Visvesvaraya Technological University (VTU)
-            </Text>
-            <View style={styles.footerLinks}>
-              <Text style={styles.footerLink}>Terms</Text>
-              <Text style={styles.footerDivider}>|</Text>
-              <Text style={styles.footerLink}>Privacy</Text>
-            </View>
-          </View>
-
-          {/* Bottom Landscape */}
-          <View style={styles.bottomLandscape}>
-            <Image
-              source={require("../../assets/images/bg/login_header.png")}
-              style={styles.landscapeImage}
-              resizeMode="cover"
-            />
-          </View>
-        </SafeAreaView>
+        {/* Hero copy */}
+        <Text style={styles.heroEyebrow}>SOCIAL ACTIVITY TRACKER</Text>
+        <Text style={styles.heroTitle}>{"Track. Earn.\nGet Rewarded."}</Text>
+        <Text style={styles.heroSubtitle}>
+          Log your social activities and earn verified certificates for your contributions.
+        </Text>
       </LinearGradient>
-    </ImageBackground>
+
+      {/* ── Bottom Sheet ── */}
+      <View style={styles.sheet}>
+        <View style={styles.sheetHandle} />
+
+        <Text style={styles.sheetHeading}>Sign in to continue</Text>
+        <Text style={styles.sheetSub}>Select your role to get started</Text>
+
+        {/* Student Card */}
+        <TouchableOpacity
+          style={styles.loginCard}
+          activeOpacity={0.85}
+          onPress={() => router.push("/student-login")}
+        >
+          <View style={[styles.cardIcon, styles.cardIconStudent]}>
+            {/* Replace emoji with your image asset if available */}
+            <Text style={styles.cardIconText}>🎓</Text>
+          </View>
+          <View style={styles.cardLabel}>
+            <Text style={styles.cardTitle}>Student Login</Text>
+            <Text style={styles.cardDesc}>Track & earn your certificates</Text>
+          </View>
+          <View style={styles.cardArrow}>
+            <Text style={styles.cardArrowText}>›</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Faculty Card */}
+<TouchableOpacity
+  style={styles.loginCard}
+  activeOpacity={0.85}
+  onPress={() => router.push("/faculty-login")}
+>
+  <View style={[styles.cardIcon, styles.cardIconFaculty]}>
+    <Text style={styles.cardIconText}>👩‍💼</Text>
+  </View>
+  <View style={styles.cardLabel}>
+    <Text style={styles.cardTitle}>Faculty Login</Text>
+    <Text style={styles.cardDesc}>Verify & manage student activities</Text>
+  </View>
+  <View style={styles.cardArrow}>
+    <Text style={styles.cardArrowText}>›</Text>
+  </View>
+</TouchableOpacity>
+
+        {/* Footer */}
+        <View style={styles.footer}>
+          {/* Divider line */}
+          <View style={styles.footerDividerLine} />
+
+          <Text style={styles.footerMadeby}>
+            {"Made with ♥ for "}
+            <Text style={styles.footerBrand}>{"Vikasana Foundation"}</Text>
+          </Text>
+
+          <View style={styles.footerLinks}>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => router.push("/terms")}
+            >
+              <Text style={styles.footerLink}>{"Terms of Service"}</Text>
+            </TouchableOpacity>
+
+            <View style={styles.footerSeparator}>
+              <Text style={styles.footerSepText}>{"·"}</Text>
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => router.push("/privacy")}
+            >
+              <Text style={styles.footerLink}>{"Privacy Policy"}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.footerVersion}>{"v1.0.0"}</Text>
+        </View>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  bg: {
+  safeArea: {
     flex: 1,
-    width: "100%",
-    height: "100%",
-  },
-  gradient: {
-    flex: 1,
-  },
-  container: {
-    flex: 1,
+    backgroundColor: "#0d3352",
   },
 
-  // Header Styles
-  header: {
-    alignItems: "center",
-    marginTop: 20,
-    paddingHorizontal: 20,
+  // ── Hero ──────────────────────────────────────────
+  hero: {
+    paddingTop: 20,
+    paddingBottom: 60,
+    paddingHorizontal: 28,
+    position: "relative",
+    overflow: "hidden",
   },
-  welcome: {
-    fontSize: 15,
-    color: "#5a5a5a",
-    fontWeight: "400",
+
+  decorCircle1: {
+    position: "absolute",
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    top: -80,
+    right: -80,
+  },
+  decorCircle2: {
+    position: "absolute",
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: "rgba(92,184,92,0.08)",
+    bottom: -30,
+    left: -40,
+  },
+
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 32,
+  },
+  logoBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 13,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  logoImg: {
+    width: 30,
+    height: 30,
+  },
+  logoEmoji: {
+    fontSize: 22,
+  },
+  brandName: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "800",
     letterSpacing: 0.3,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#2d4a3e",
-    textAlign: "center",
-    letterSpacing: 0.5,
-    marginTop: 2,
-  },
-  subtitle: {
-    fontSize: 13,
-    color: "#4a6b5a",
-    textAlign: "center",
-    fontWeight: "500",
-    letterSpacing: 0.2,
-    marginTop: 6,
+  brandTagline: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 10,
+    fontWeight: "400",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    marginTop: 1,
   },
 
-  // Logos
-  logosContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 12,
-    gap: 12,
-  },
-  logoCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: "#4a6b54",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  logoText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: 1,
-  },
-  logoCircleAICTE: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: "#f5c842",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  logoTextAICTE: {
-    color: "#2d4a3e",
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-  },
-  dividerContainer: {
-    width: 30,
-    alignItems: "center",
-  },
-  dividerLine: {
-    width: 1,
-    height: 30,
-    backgroundColor: "#8fa890",
-  },
-
-  // Hero Image
-  heroContainer: {
-    width: "100%",
-    height: 180,
-    marginTop: 12,
-  },
-  heroImage: {
-    width: "100%",
-    height: "100%",
-  },
-
-  // Cards Container
-  cardsContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-
-  cardsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-
-  card: {
-    flex: 1,
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
-    borderRadius: 16,
-    padding: 12,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 4,
-  },
-
-  imageContainer: {
-    width: "100%",
-    height: 85,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 8,
-    backgroundColor: "#f5f5f5",
-    borderRadius: 12,
-  },
-  
-  roleImage: {
-    width: 80,
-    height: 80,
-  },
-
-  cardTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#2d4a3e",
-    textAlign: "center",
-    marginTop: 4,
-  },
-
-  cardSubtitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#2d4a3e",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-
-  cardButton: {
-    backgroundColor: "#4a6b54",
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 3,
-    width: "100%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-
-  cardButtonText: {
-    color: "#ffffff",
+  heroEyebrow: {
+    color: "rgba(255,255,255,0.45)",
     fontSize: 10,
     fontWeight: "700",
-    letterSpacing: 0.2,
+    letterSpacing: 2.5,
+    marginBottom: 8,
   },
-
-  cardButtonArrow: {
+  heroTitle: {
     color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "600",
-    marginLeft: 2,
+    fontSize: 34,
+    fontWeight: "900",
+    lineHeight: 40,
+    letterSpacing: -0.5,
+    marginBottom: 12,
+  },
+  heroSubtitle: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 13,
+    fontWeight: "400",
+    lineHeight: 20,
   },
 
-  // Footer
+  // ── Bottom Sheet ──────────────────────────────────
+  sheet: {
+    flex: 1,
+    backgroundColor: "#f4f8fc",
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    marginTop: -28,
+    paddingTop: 16,
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+  },
+  sheetHandle: {
+    width: 38,
+    height: 4,
+    backgroundColor: "#cddae6",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 24,
+  },
+  sheetHeading: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "#0d3352",
+    marginBottom: 4,
+  },
+  sheetSub: {
+    fontSize: 13,
+    color: "#7a9ab5",
+    fontWeight: "400",
+    marginBottom: 24,
+  },
+
+  // ── Login Cards ───────────────────────────────────
+  loginCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 14,
+    gap: 14,
+    shadowColor: "#0d3352",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+  },
+
+  cardIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  cardIconStudent: {
+    backgroundColor: "#dff0fa",
+  },
+  cardIconFaculty: {
+    backgroundColor: "#dff5eb",
+  },
+  cardIconText: {
+    fontSize: 24,
+  },
+
+  cardLabel: {
+    flex: 1,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0d3352",
+    marginBottom: 2,
+  },
+  cardDesc: {
+    fontSize: 12,
+    color: "#8aabbd",
+    fontWeight: "400",
+  },
+
+  cardArrow: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    backgroundColor: "#0d3352",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  cardArrowText: {
+    color: "#ffffff",
+    fontSize: 22,
+    fontWeight: "300",
+    lineHeight: 26,
+    marginTop: -2,
+  },
+
+  // ── Footer ────────────────────────────────────────
   footer: {
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    marginTop: "auto",
+    paddingTop: 20,
+    paddingBottom: 8,
   },
-  footerText: {
-    fontSize: 12,
-    color: "#5a5a5a",
-    fontWeight: "500",
+  footerDividerLine: {
+    width: "100%",
+    height: 1,
+    backgroundColor: "#e2eaf2",
+    marginBottom: 16,
   },
-  footerTitle: {
+  footerMadeby: {
     fontSize: 12,
-    color: "#2d4a3e",
-    fontWeight: "600",
-    textAlign: "center",
-    marginTop: 2,
+    color: "#a0b8cc",
+    fontWeight: "400",
+    marginBottom: 10,
     letterSpacing: 0.2,
+  },
+  footerBrand: {
+    color: "#2271a3",
+    fontWeight: "700",
   },
   footerLinks: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 4,
     gap: 6,
+    marginBottom: 10,
   },
   footerLink: {
-    fontSize: 11,
-    color: "#5a5a5a",
-    fontWeight: "500",
+    fontSize: 12,
+    color: "#2271a3",
+    fontWeight: "600",
+    letterSpacing: 0.1,
   },
-  footerDivider: {
-    fontSize: 11,
-    color: "#5a5a5a",
+  footerSeparator: {
+    paddingHorizontal: 2,
   },
-
-  // Bottom Landscape
-  bottomLandscape: {
-    width: "100%",
-    height: 100,
-    marginTop: "auto",
+  footerSepText: {
+    color: "#b0c7d8",
+    fontSize: 14,
+    lineHeight: 16,
   },
-  landscapeImage: {
-    width: "100%",
-    height: "100%",
+  footerVersion: {
+    fontSize: 10,
+    color: "#c8d8e4",
+    fontWeight: "400",
+    letterSpacing: 0.5,
   },
 });
