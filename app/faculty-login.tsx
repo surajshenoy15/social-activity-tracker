@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Alert,
   View,
   Text,
   TextInput,
+  TouchableOpacity,
   Pressable,
   ActivityIndicator,
   StyleSheet,
@@ -12,320 +12,659 @@ import {
   Platform,
   ScrollView,
   StatusBar,
+  Dimensions,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { API_BASE } from "@/constants/api";
+import {
+  Mail,
+  Lock,
+  ArrowLeft,
+  LogIn,
+  Eye,
+  EyeOff,
+  CheckCircle,
+  Shield,
+  Sparkles,
+  Link2,
+} from "lucide-react-native";
 
-// ── Vikasana palette ──────────────────────────────────────────────────────────
+const { width } = Dimensions.get("window");
+
+// ─── Colour tokens ──────────────────────────────────────────
 const C = {
-  bgDeep:     "#0a1628",   // dark navy (header bg)
-  bgMid:      "#0d2044",   // mid navy
-  accent:     "#1565c0",   // primary blue
-  accentBright:"#1e88e5",  // lighter blue for glow / focus
-  surface:    "#ffffff",   // card surface
-  surfaceAlt: "#f4f7fc",   // input background
-  border:     "#dce6f5",
-  text:       "#0a1628",
-  textMuted:  "#5a7099",
-  textLight:  "#ffffff",
-  labelBlue:  "#1565c0",
+  forest:       "#0B2D6B",   // primary — deep navy blue
+  forestMid:    "#1A47A0",   // mid blue
+  forestLight:  "#3B6FD4",   // light blue
+  sage:         "#C7D8F5",   // soft blue border
+  sageLight:    "#EBF1FB",   // pale blue bg
+  gold:         "#C9952A",   // gold accent
+  white:        "#FFFFFF",
+  ink:          "#111827",
+  muted:        "#6B7280",
+  danger:       "#DC2626",
+  success:      "#16A34A",
+  bgDeep:       "#061845",   // deepest navy for header
+  bgMid:        "#0B2D6B",
+  headerText:   "rgba(255,255,255,0.72)",
 };
 
+// ─── Toast ───────────────────────────────────────────────────
+type ToastType = "success" | "error" | "info";
+interface ToastProps { message: string; type: ToastType; visible: boolean; }
+
+function Toast({ message, type, visible }: ToastProps) {
+  const translateY = useRef(new Animated.Value(-100)).current;
+  const opacity    = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(translateY, { toValue: 0, tension: 80, friction: 10, useNativeDriver: true }),
+        Animated.timing(opacity,    { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(translateY, { toValue: -100, duration: 250, useNativeDriver: true }),
+        Animated.timing(opacity,    { toValue: 0,    duration: 200, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [visible]);
+
+  const bgColor = { success: C.success, error: C.danger, info: C.forest }[type];
+  const icon = {
+    success: <CheckCircle size={18} color="#fff" strokeWidth={2.5} />,
+    error:   <Shield      size={18} color="#fff" strokeWidth={2.5} />,
+    info:    <Sparkles    size={18} color="#fff" strokeWidth={2.5} />,
+  }[type];
+
+  return (
+    <Animated.View
+      style={[toastS.container, { backgroundColor: bgColor, transform: [{ translateY }], opacity }]}
+      pointerEvents="none"
+    >
+      {icon}
+      <Text style={toastS.text}>{message}</Text>
+    </Animated.View>
+  );
+}
+
+const toastS = StyleSheet.create({
+  container: {
+    position: "absolute", top: 56, left: 20, right: 20,
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingVertical: 14, paddingHorizontal: 18,
+    borderRadius: 14, zIndex: 999,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18, shadowRadius: 12, elevation: 8,
+  },
+  text: { color: "#fff", fontSize: 14, fontWeight: "600", flex: 1, lineHeight: 20 },
+});
+
+function useToast() {
+  const [toast, setToast] = useState<{ message: string; type: ToastType; visible: boolean }>({
+    message: "", type: "info", visible: false,
+  });
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((message: string, type: ToastType = "info") => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setToast({ message, type, visible: true });
+    timerRef.current = setTimeout(() => {
+      setToast((prev) => ({ ...prev, visible: false }));
+    }, 3200);
+  }, []);
+
+  return { toast, showToast };
+}
+
+// ─── Decorative circles ──────────────────────────────────────
+function DecorCircles() {
+  return (
+    <>
+      <View style={dec.c1} />
+      <View style={dec.c2} />
+      <View style={dec.c3} />
+      <View style={dec.c4} />
+    </>
+  );
+}
+const dec = StyleSheet.create({
+  c1: {
+    position: "absolute", top: -50, right: -50,
+    width: 200, height: 200, borderRadius: 100,
+    backgroundColor: C.forestLight, opacity: 0.10,
+  },
+  c2: {
+    position: "absolute", top: 60, right: 30,
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: C.gold, opacity: 0.10,
+  },
+  c3: {
+    position: "absolute", top: -10, left: -40,
+    width: 140, height: 140, borderRadius: 70,
+    backgroundColor: C.forestMid, opacity: 0.10,
+  },
+  c4: {
+    position: "absolute", bottom: 10, left: width * 0.4,
+    width: 60, height: 60, borderRadius: 30,
+    backgroundColor: C.gold, opacity: 0.08,
+  },
+});
+
+// ─── Dot strip ───────────────────────────────────────────────
+function DotStrip() {
+  return (
+    <View style={{ flexDirection: "row", gap: 6, justifyContent: "center", marginBottom: 20 }}>
+      {Array.from({ length: 18 }).map((_, i) => (
+        <View key={i} style={{
+          width: 4, height: 4, borderRadius: 2,
+          backgroundColor: i % 3 === 0 ? C.gold : C.sage, opacity: 0.6,
+        }} />
+      ))}
+    </View>
+  );
+}
+
+// ─── Main screen ─────────────────────────────────────────────
 export default function FacultyLogin() {
-  const [email, setEmail]       = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading]   = useState(false);
-  const [focusedField, setFocused] = useState<"email"|"password"|null>(null);
+  const [email,     setEmail]     = useState("");
+  const [password,  setPassword]  = useState("");
+  const [showPass,  setShowPass]  = useState(false);
+  const [loading,   setLoading]   = useState(false);
+  const [focusEmail, setFocusEmail] = useState(false);
+  const [focusPass,  setFocusPass]  = useState(false);
+  const { toast, showToast } = useToast();
 
   // Entrance animations
-  const headerY  = useRef(new Animated.Value(-40)).current;
-  const headerOp = useRef(new Animated.Value(0)).current;
-  const cardY    = useRef(new Animated.Value(60)).current;
-  const cardOp   = useRef(new Animated.Value(0)).current;
+  const fadeAnim  = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.spring(headerY,  { toValue: 0,   useNativeDriver: true, tension: 60, friction: 10 }),
-      Animated.timing(headerOp, { toValue: 1,   duration: 500, useNativeDriver: true }),
-      Animated.spring(cardY,    { toValue: 0,   useNativeDriver: true, tension: 50, friction: 9, delay: 150 }),
-      Animated.timing(cardOp,   { toValue: 1,   duration: 500, delay: 150, useNativeDriver: true }),
+      Animated.timing(fadeAnim,  { toValue: 1, duration: 600, useNativeDriver: true }),
+      Animated.spring(slideAnim, { toValue: 0, tension: 60, friction: 12, useNativeDriver: true }),
     ]).start();
   }, []);
 
   const onLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert("Missing Details", "Please enter email & password");
-      return;
-    }
-    if (loading) return;
-    setLoading(true);
+    const e = email.trim().toLowerCase();
+    const p = password.trim();
 
+    if (!e) { showToast("Please enter your email address", "error"); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
+      showToast("Please enter a valid email address", "error"); return;
+    }
+    if (!p) { showToast("Please enter your password", "error"); return; }
+    if (loading) return;
+
+    setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/auth/faculty/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.toLowerCase().trim(), password }),
+        body: JSON.stringify({ email: e, password: p }),
       });
 
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        Alert.alert("Login Failed", data?.detail || "Invalid email or password");
-        return;
+        showToast(data?.detail || "Invalid email or password", "error"); return;
       }
       if (!data?.access_token) {
-        Alert.alert("Login Failed", "Token not received from server");
-        return;
+        showToast("Token not received from server", "error"); return;
       }
 
       await SecureStore.setItemAsync("faculty_token", data.access_token);
-      await SecureStore.setItemAsync(
-        "faculty_profile",
-        JSON.stringify(data?.faculty ?? data)
-      );
+      await SecureStore.setItemAsync("faculty_profile", JSON.stringify(data?.faculty ?? data));
 
-      router.replace("/faculty-dashboard");
+      showToast("Login successful! Redirecting…", "success");
+      setTimeout(() => router.replace("/faculty-dashboard"), 800);
     } catch {
-      Alert.alert("Network Error", "Unable to connect to server");
+      showToast("Unable to connect to server", "error");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
+    <SafeAreaView style={s.safe}>
       <StatusBar barStyle="light-content" backgroundColor={C.bgDeep} />
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {/* ── Header band ────────────────────────────────────────────────── */}
-        <Animated.View
-          style={[styles.header, { opacity: headerOp, transform: [{ translateY: headerY }] }]}
+
+      {/* Toast */}
+      <Toast message={toast.message} type={toast.type} visible={toast.visible} />
+
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <ScrollView
+          contentContainerStyle={s.scroll}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          {/* Brand row */}
-          <View style={styles.brandRow}>
-            <View style={styles.logoBox}>
-              <Text style={styles.logoText}>V</Text>
+
+          {/* ── Header ───────────────────────────────────── */}
+          <View style={s.header}>
+            <DecorCircles />
+
+            {/* Nav row */}
+            <View style={s.navRow}>
+              <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+                <ArrowLeft size={20} color={C.white} strokeWidth={2.5} />
+              </TouchableOpacity>
+              <View style={s.orgBadge}>
+                <Text style={s.orgText}>VIKASANA FOUNDATION</Text>
+              </View>
             </View>
-            <View>
-              <Text style={styles.brandName}>Vikasana Foundation</Text>
-              <Text style={styles.brandTagline}>EMPOWERING COMMUNITIES</Text>
+
+            {/* Blue abstract header graphic — geometric pattern */}
+            <View style={s.headerGraphic}>
+              {/* Grid of blue squares */}
+              <View style={s.gridWrap}>
+                {Array.from({ length: 24 }).map((_, i) => (
+                  <View
+                    key={i}
+                    style={[
+                      s.gridCell,
+                      {
+                        opacity: [0, 5, 10, 15, 19, 23].includes(i) ? 0.35
+                               : [1, 6, 11, 16].includes(i)         ? 0.20
+                               : 0.10,
+                        backgroundColor: i % 5 === 0 ? C.gold : C.forestLight,
+                      },
+                    ]}
+                  />
+                ))}
+              </View>
+
+              {/* Shield icon overlay */}
+              <View style={s.shieldWrap}>
+                <View style={s.shieldOuter}>
+                  <View style={s.shieldInner}>
+                    <Text style={s.shieldEmoji}>👩‍🏫</Text>
+                  </View>
+                </View>
+              </View>
             </View>
-          </View>
 
-          {/* Badge */}
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>SOCIAL ACTIVITY TRACKER</Text>
-          </View>
-
-          {/* Hero text */}
-          <Text style={styles.heroTitle}>Verify.{"\n"}Manage.{"\n"}Empower.</Text>
-          <Text style={styles.heroSub}>
-            Verify student activities and manage community contributions.
-          </Text>
-        </Animated.View>
-
-        {/* ── Card ───────────────────────────────────────────────────────── */}
-        <Animated.View
-          style={[styles.card, { opacity: cardOp, transform: [{ translateY: cardY }] }]}
-        >
-          {/* Faculty icon row */}
-          <View style={styles.iconRow}>
-            <View style={styles.iconCircle}>
-              <Text style={{ fontSize: 28 }}>👩‍🏫</Text>
+            {/* Hero text */}
+            <View style={s.heroTextWrap}>
+              <View style={s.tagRow}>
+                <View style={s.tag}><Text style={s.tagText}>AICTE · VTU</Text></View>
+                <View style={s.tag}><Text style={s.tagText}>Faculty Portal</Text></View>
+              </View>
+              <Text style={s.heroTitle}>Verify.{"\n"}Manage.{"\n"}Empower.</Text>
+              <Text style={s.heroSub}>Verify student activities and manage community contributions.</Text>
             </View>
-            <View>
-              <Text style={styles.cardTitle}>Faculty Login</Text>
-              <Text style={styles.cardSub}>Verify &amp; manage student activities</Text>
+
+            {/* Pull handle */}
+            <View style={s.pullHandle} />
+          </View>
+
+          {/* ── Form card ──────────────────────────────── */}
+          <Animated.View style={[s.card, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+
+            {/* Card header */}
+            <View style={s.cardHeader}>
+              <View style={s.iconCircle}>
+                <Shield size={22} color={C.white} strokeWidth={2} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.cardTitle}>Faculty Sign In</Text>
+                <Text style={s.cardSub}>Secure access · Institutional account</Text>
+              </View>
             </View>
-          </View>
 
-          <View style={styles.divider} />
+            <DotStrip />
 
-          {/* Email */}
-          <Text style={styles.label}>Email Address</Text>
-          <View style={[styles.inputWrap, focusedField === "email" && styles.inputFocused]}>
-            <Text style={styles.inputIcon}>✉️</Text>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              placeholder="faculty@institution.edu"
-              placeholderTextColor={C.textMuted}
-              onFocus={() => setFocused("email")}
-              onBlur={() => setFocused(null)}
-              style={styles.input}
-            />
-          </View>
+            {/* Step indicator */}
+            <View style={s.stepRow}>
+              {["Credentials", "Access Dashboard"].map((label, i) => (
+                <View key={i} style={s.stepItem}>
+                  <View style={[s.stepDot, i === 0 && s.stepDotActive]}>
+                    <Text style={s.stepNum}>{i + 1}</Text>
+                  </View>
+                  <Text style={[s.stepLabel, i === 0 && s.stepLabelActive]}>{label}</Text>
+                  {i < 1 && <View style={s.stepLine} />}
+                </View>
+              ))}
+            </View>
 
-          {/* Password */}
-          <Text style={[styles.label, { marginTop: 14 }]}>Password</Text>
-          <View style={[styles.inputWrap, focusedField === "password" && styles.inputFocused]}>
-            <Text style={styles.inputIcon}>🔒</Text>
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              placeholder="Enter your password"
-              placeholderTextColor={C.textMuted}
-              onFocus={() => setFocused("password")}
-              onBlur={() => setFocused(null)}
-              style={styles.input}
-            />
-          </View>
+            {/* Email field */}
+            <View style={s.fieldGroup}>
+              <Text style={s.fieldLabel}>Email Address</Text>
+              <View style={[s.fieldWrap, focusEmail && s.fieldWrapActive]}>
+                <Mail size={18} color={focusEmail || email.length > 0 ? C.forest : C.muted} strokeWidth={2} />
+                <TextInput
+                  placeholder="faculty@institution.edu"
+                  placeholderTextColor="#9CA3AF"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={email}
+                  onChangeText={setEmail}
+                  onFocus={() => setFocusEmail(true)}
+                  onBlur={() => setFocusEmail(false)}
+                  style={s.fieldInput}
+                  editable={!loading}
+                />
+                {email.length > 6 && (
+                  <CheckCircle size={16} color={C.forestLight} strokeWidth={2.5} />
+                )}
+              </View>
+            </View>
 
-          {/* Login button */}
-          <Pressable
-            onPress={onLogin}
-            disabled={loading}
-            style={({ pressed }) => [
-              styles.btn,
-              pressed && { opacity: 0.88, transform: [{ scale: 0.98 }] },
-              loading && { opacity: 0.7 },
-            ]}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Text style={styles.btnText}>Sign In</Text>
-                <Text style={styles.btnArrow}>›</Text>
-              </>
-            )}
-          </Pressable>
+            {/* Password field */}
+            <View style={s.fieldGroup}>
+              <Text style={s.fieldLabel}>Password</Text>
+              <View style={[s.fieldWrap, focusPass && s.fieldWrapActive]}>
+                <Lock size={18} color={focusPass || password.length > 0 ? C.forest : C.muted} strokeWidth={2} />
+                <TextInput
+                  placeholder="Enter your password"
+                  placeholderTextColor="#9CA3AF"
+                  secureTextEntry={!showPass}
+                  value={password}
+                  onChangeText={setPassword}
+                  onFocus={() => setFocusPass(true)}
+                  onBlur={() => setFocusPass(false)}
+                  style={s.fieldInput}
+                  editable={!loading}
+                />
+                <TouchableOpacity onPress={() => setShowPass((v) => !v)} hitSlop={8}>
+                  {showPass
+                    ? <EyeOff size={18} color={C.muted} strokeWidth={2} />
+                    : <Eye    size={18} color={C.muted} strokeWidth={2} />
+                  }
+                </TouchableOpacity>
+              </View>
+              <Text style={s.fieldHint}>Use your institutional credentials to sign in</Text>
+            </View>
 
-          {/* Activate link */}
-          <Pressable
-            onPress={() => router.push("/faculty-activate")}
-            style={styles.activateBtn}
-          >
-            <Text style={styles.activateText}>
-              Have an activation link?{" "}
-              <Text style={styles.activateLink}>Activate account</Text>
+            {/* CTA */}
+            <Pressable
+              onPress={onLogin}
+              disabled={loading}
+              style={({ pressed }) => [
+                s.cta,
+                loading && { opacity: 0.75 },
+                pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] },
+              ]}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <LogIn size={20} color="#fff" strokeWidth={2.5} />
+              )}
+              <Text style={s.ctaText}>{loading ? "Signing In…" : "Sign In to Portal"}</Text>
+            </Pressable>
+
+            {/* Activate link */}
+            <TouchableOpacity
+              onPress={() => router.push("/faculty-activate")}
+              style={s.activateBtn}
+            >
+              <Link2 size={14} color={C.forestMid} strokeWidth={2} />
+              <Text style={s.activateText}>
+                Have an activation link?{" "}
+                <Text style={s.activateLink}>Activate account</Text>
+              </Text>
+            </TouchableOpacity>
+
+            {/* Gold strip */}
+            <View style={s.goldStrip} />
+
+            {/* Footer note */}
+            <Text style={s.footerNote}>
+              Vikasana Foundation · AICTE Approved · VTU Affiliated
             </Text>
-          </Pressable>
-        </Animated.View>
+          </Animated.View>
 
-        {/* Footer */}
-        <Text style={styles.footer}>Made with ❤️ for Vikasana Foundation</Text>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          {/* Bottom bar */}
+          <View style={s.bottomBar}>
+            {/* Blue geometric waves */}
+            <View style={s.wave1} />
+            <View style={s.wave2} />
+            <View style={s.wave3} />
+            <Text style={s.bottomText}>Empowering Communities Through Education</Text>
+          </View>
+
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bgDeep },
-  scroll: { flexGrow: 1 },
+// ─── Styles ──────────────────────────────────────────────────
+const s = StyleSheet.create({
+  safe:   { flex: 1, backgroundColor: C.bgDeep },
+  scroll: { flexGrow: 1, backgroundColor: "#F4F7FC" },
 
-  // ── Header ──
+  // Header
   header: {
     backgroundColor: C.bgDeep,
-    paddingHorizontal: 24,
-    paddingTop: 56,
-    paddingBottom: 36,
+    paddingBottom: 0,
+    overflow: "hidden",
+    position: "relative",
   },
-  brandRow: { flexDirection: "row", alignItems: "center", marginBottom: 24, gap: 12 },
-  logoBox: {
-    width: 40, height: 40,
-    borderRadius: 10,
-    backgroundColor: C.accentBright,
+  navRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 14,
+  },
+  backBtn: {
+    width: 38, height: 38, borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.12)",
     justifyContent: "center", alignItems: "center",
   },
-  logoText:    { color: C.textLight, fontWeight: "800", fontSize: 18 },
-  brandName:   { color: C.textLight, fontWeight: "700", fontSize: 14 },
-  brandTagline:{ color: "#7baad4",   fontWeight: "600", fontSize: 9, letterSpacing: 1.5, marginTop: 1 },
-
-  badge: {
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: 20,
-    paddingHorizontal: 12, paddingVertical: 4,
-    marginBottom: 18,
+  orgBadge: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    borderRadius: 20, borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
   },
-  badgeText: { color: "#a8c8f0", fontSize: 10, fontWeight: "700", letterSpacing: 1.8 },
+  orgText: { color: "#fff", fontSize: 10, fontWeight: "700", letterSpacing: 1.5 },
+
+  // Blue header graphic
+  headerGraphic: {
+    width: "100%", height: 160,
+    backgroundColor: C.bgMid,
+    overflow: "hidden",
+    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  gridWrap: {
+    position: "absolute",
+    flexDirection: "row", flexWrap: "wrap",
+    width: "100%", height: "100%",
+    padding: 12, gap: 8,
+  },
+  gridCell: {
+    width: 36, height: 36, borderRadius: 8,
+  },
+  shieldWrap: {
+    justifyContent: "center", alignItems: "center",
+  },
+  shieldOuter: {
+    width: 90, height: 90, borderRadius: 24,
+    backgroundColor: "rgba(59,111,212,0.3)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center", alignItems: "center",
+  },
+  shieldInner: {
+    width: 68, height: 68, borderRadius: 18,
+    backgroundColor: C.forestMid,
+    justifyContent: "center", alignItems: "center",
+    shadowColor: C.forestLight,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6, shadowRadius: 16, elevation: 8,
+  },
+  shieldEmoji: { fontSize: 32 },
+
+  heroTextWrap: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 10 },
+  tagRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
+  tag: {
+    paddingHorizontal: 10, paddingVertical: 4,
+    backgroundColor: "rgba(201,149,42,0.2)",
+    borderRadius: 6, borderWidth: 1,
+    borderColor: "rgba(201,149,42,0.35)",
+  },
+  tagText: { color: C.gold, fontSize: 10, fontWeight: "700", letterSpacing: 0.8 },
 
   heroTitle: {
-    color: C.textLight,
-    fontSize: 40,
-    fontWeight: "800",
-    lineHeight: 48,
-    marginBottom: 12,
+    fontSize: 34, fontWeight: "800", color: "#fff",
+    lineHeight: 40, letterSpacing: -0.5,
   },
-  heroSub: { color: "#8ab4d9", fontSize: 14, lineHeight: 21, maxWidth: 280 },
+  heroSub: {
+    marginTop: 8, fontSize: 13, color: "rgba(255,255,255,0.65)", fontWeight: "500",
+  },
 
-  // ── Card ──
+  pullHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    alignSelf: "center", marginTop: 20,
+  },
+
+  // Card
   card: {
-    backgroundColor: C.surface,
+    backgroundColor: C.white,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    flex: 1,
-    padding: 28,
-    paddingTop: 32,
-    // subtle top shadow
+    marginTop: -14,
+    paddingTop: 28,
+    paddingHorizontal: 24,
+    paddingBottom: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.06,
     shadowRadius: 12,
     elevation: 8,
+    flex: 1,
   },
-
-  iconRow: { flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 20 },
+  cardHeader: { flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 20 },
   iconCircle: {
-    width: 54, height: 54,
-    borderRadius: 16,
-    backgroundColor: "#e8f0fe",
+    width: 48, height: 48, borderRadius: 14,
+    backgroundColor: C.forest,
+    justifyContent: "center", alignItems: "center",
+    shadowColor: C.forest,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
+  },
+  cardTitle: { fontSize: 20, fontWeight: "800", color: C.ink, letterSpacing: -0.3 },
+  cardSub:   { fontSize: 12, color: C.muted, marginTop: 2, fontWeight: "500" },
+
+  // Steps
+  stepRow: {
+    flexDirection: "row", alignItems: "center",
+    marginBottom: 28, paddingHorizontal: 4,
+  },
+  stepItem:       { flexDirection: "row", alignItems: "center", flex: 1 },
+  stepDot: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: "#E5E7EB",
     justifyContent: "center", alignItems: "center",
   },
-  cardTitle: { fontSize: 22, fontWeight: "800", color: C.text },
-  cardSub:   { fontSize: 13, color: C.textMuted, marginTop: 2 },
-
-  divider: { height: 1, backgroundColor: C.border, marginBottom: 22 },
-
-  label: { fontSize: 12, fontWeight: "700", color: C.textMuted, letterSpacing: 0.8, marginBottom: 6 },
-
-  inputWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: C.surfaceAlt,
-    borderWidth: 1.5,
-    borderColor: C.border,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === "ios" ? 14 : 0,
-    gap: 10,
+  stepDotActive:  { backgroundColor: C.forest },
+  stepNum:        { fontSize: 12, fontWeight: "700", color: "#fff" },
+  stepLabel:      { fontSize: 11, color: C.muted, marginLeft: 6, fontWeight: "500" },
+  stepLabelActive:{ color: C.forest, fontWeight: "700" },
+  stepLine: {
+    flex: 1, height: 2, backgroundColor: "#E5E7EB",
+    marginHorizontal: 6, borderRadius: 1,
   },
-  inputFocused: { borderColor: C.accentBright, backgroundColor: "#f0f6ff" },
-  inputIcon: { fontSize: 16 },
-  input: { flex: 1, fontSize: 15, color: C.text, paddingVertical: Platform.OS === "android" ? 12 : 0 },
 
-  btn: {
-    marginTop: 24,
-    backgroundColor: C.accent,
-    borderRadius: 14,
-    paddingVertical: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    shadowColor: C.accent,
+  // Fields
+  fieldGroup: { marginBottom: 20 },
+  fieldLabel: {
+    fontSize: 13, fontWeight: "700", color: C.forest,
+    marginBottom: 8, letterSpacing: 0.2,
+  },
+  fieldWrap: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: C.sageLight,
+    borderRadius: 14, borderWidth: 1.5, borderColor: C.sage,
+    paddingHorizontal: 14, paddingVertical: 4, gap: 10,
+  },
+  fieldWrapActive: { borderColor: C.forestMid, backgroundColor: "#fff" },
+  fieldInput: { flex: 1, paddingVertical: 13, fontSize: 14, color: C.ink },
+  fieldHint: {
+    marginTop: 6, fontSize: 11, color: C.muted,
+    fontStyle: "italic", paddingLeft: 2,
+  },
+
+  // CTA
+  cta: {
+    backgroundColor: C.forest,
+    paddingVertical: 17, borderRadius: 16,
+    flexDirection: "row", alignItems: "center",
+    justifyContent: "center", gap: 10,
+    shadowColor: C.forest,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowOpacity: 0.30, shadowRadius: 12, elevation: 6,
+    marginBottom: 20,
   },
-  btnText:  { color: C.textLight, fontSize: 16, fontWeight: "700" },
-  btnArrow: { color: C.textLight, fontSize: 22, fontWeight: "300", lineHeight: 22 },
+  ctaText: { color: "#fff", fontSize: 16, fontWeight: "800", letterSpacing: 0.4 },
 
-  activateBtn: { marginTop: 20, alignItems: "center" },
-  activateText: { fontSize: 13, color: C.textMuted, textAlign: "center" },
-  activateLink: { color: C.labelBlue, fontWeight: "700" },
+  // Activate
+  activateBtn: {
+    flexDirection: "row", alignItems: "center",
+    justifyContent: "center", gap: 6,
+    paddingVertical: 4, marginBottom: 24,
+  },
+  activateText: { fontSize: 13, color: C.muted, textAlign: "center" },
+  activateLink: { color: C.forestMid, fontWeight: "700" },
 
-  footer: { color: "#4a6a8a", textAlign: "center", fontSize: 12, paddingVertical: 20 },
+  // Gold strip + footer
+  goldStrip: {
+    height: 3, borderRadius: 2,
+    backgroundColor: C.gold,
+    marginBottom: 16, opacity: 0.7,
+  },
+  footerNote: {
+    textAlign: "center", fontSize: 11, color: "#9CA3AF",
+    marginBottom: 28, letterSpacing: 0.3,
+  },
+
+  // Bottom bar
+  bottomBar: {
+    height: 100, width: "100%",
+    backgroundColor: C.bgDeep,
+    overflow: "hidden",
+    justifyContent: "flex-end",
+    paddingBottom: 20,
+    position: "relative",
+  },
+  wave1: {
+    position: "absolute", top: -30,
+    width: width * 1.4, height: 80,
+    borderRadius: 100,
+    backgroundColor: C.forestMid,
+    opacity: 0.25,
+    left: -width * 0.2,
+  },
+  wave2: {
+    position: "absolute", top: -10,
+    width: width * 1.2, height: 60,
+    borderRadius: 80,
+    backgroundColor: C.forestLight,
+    opacity: 0.15,
+    left: -width * 0.1,
+  },
+  wave3: {
+    position: "absolute", top: 10,
+    width: width,
+    height: 50,
+    borderRadius: 60,
+    backgroundColor: C.gold,
+    opacity: 0.06,
+  },
+  bottomText: {
+    textAlign: "center",
+    fontSize: 11, color: "rgba(255,255,255,0.55)",
+    fontWeight: "600", letterSpacing: 1.2,
+    textTransform: "uppercase",
+  },
 });
