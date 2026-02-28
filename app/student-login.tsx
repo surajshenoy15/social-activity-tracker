@@ -312,7 +312,12 @@ export default function StudentLogin() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: e }),
       });
-      const data = await res.json().catch(() => ({}));
+      const raw = await res.text();
+console.log("verify-otp status:", res.status);
+console.log("verify-otp raw:", raw);
+
+let data: any = {};
+try { data = raw ? JSON.parse(raw) : {}; } catch {}
       if (!res.ok) {
         showToast(data?.detail || "Unable to send OTP. Please try again.", "error"); return;
       }
@@ -326,33 +331,92 @@ export default function StudentLogin() {
     }
   };
 
-  const verifyOtp = async () => {
-    const e = email.trim().toLowerCase();
-    const o = otp.trim();
-    if (!e)           { showToast("Email is missing", "error"); return; }
-    if (o.length < 6) { showToast("Enter the complete 6-digit OTP", "error"); return; }
-    setLoadVerify(true);
-    try {
-      const res  = await fetch(`${API_BASE}/auth/student/verify-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: e, otp: o }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        showToast(data?.detail || "Invalid or expired OTP", "error"); return;
-      }
-      const token = data?.access_token;
-      if (!token) { showToast("Token missing from server response", "error"); return; }
-      await AsyncStorage.multiSet([["role", "student"], ["token", token], ["student_email", e]]);
-      showToast("Login successful! Redirecting…", "success");
-      setTimeout(() => router.replace("/(student)/dashboard"), 800);
-    } catch (err: any) {
-      showToast(err?.message || "Network error — could not reach server", "error");
-    } finally {
-      setLoadVerify(false);
+const verifyOtp = async () => {
+  const e = email.trim().toLowerCase();
+  const o = otp.trim();
+
+  if (!e) { showToast("Email is missing", "error"); return; }
+  if (o.length < 6) { showToast("Enter the complete 6-digit OTP", "error"); return; }
+
+  setLoadVerify(true);
+  try {
+    const payload: any = { email: e, otp: o, otp_code: o, code: o, otpCode: o };
+    const otpNum = Number(o);
+    if (Number.isFinite(otpNum)) payload.otp_number = otpNum;
+
+    const res = await fetch(`${API_BASE}/auth/student/verify-otp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const raw = await res.text();
+    let data: any = {};
+    try { data = raw ? JSON.parse(raw) : {}; } catch {}
+
+    if (!res.ok) {
+      console.log("verify-otp status:", res.status);
+      console.log("verify-otp raw:", raw);
+      showToast(data?.detail || "Invalid OTP / request format mismatch", "error");
+      return;
     }
-  };
+
+    const token = data?.access_token ?? data?.token ?? data?.accessToken;
+    if (!token) {
+      console.log("verify-otp response:", data);
+      showToast("Token missing from server response", "error");
+      return;
+    }
+
+    await AsyncStorage.multiSet([
+      ["role", "student"],
+      ["access_token", token], // store in a standard key
+      ["token", token],        // keep for backward compatibility
+      ["student_email", e],
+    ]);
+
+    const profileRes = await fetch(`${API_BASE}/students/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const profileRaw = await profileRes.text();
+    let profile: any = {};
+    try { profile = profileRaw ? JSON.parse(profileRaw) : {}; } catch {}
+
+    if (!profileRes.ok) {
+      console.log("students/me status:", profileRes.status);
+      console.log("students/me raw:", profileRaw);
+      showToast(profile?.detail || `Profile fetch failed (${profileRes.status})`, "error");
+      router.replace("/(student)/dashboard");
+      return;
+    }
+
+    const studentId = profile?.id;
+    const faceEnrolled = profile?.face_enrolled === true;
+
+    if (!studentId) {
+      showToast("Student ID missing in profile", "error");
+      router.replace("/(student)/dashboard");
+      return;
+    }
+
+    await AsyncStorage.multiSet([
+      ["student_id", String(studentId)],
+      ["face_enrolled", faceEnrolled ? "true" : "false"],
+    ]);
+
+    showToast("Login successful! Redirecting…", "success");
+    setTimeout(() => {
+      if (!faceEnrolled) router.replace("/(student)/face-enroll");
+      else router.replace("/(student)/dashboard");
+    }, 600);
+
+  } catch (err: any) {
+    showToast(err?.message || "Network error — could not reach server", "error");
+  } finally {
+    setLoadVerify(false);
+  }
+};
 
   return (
     <SafeAreaView style={s.safe}>
