@@ -83,8 +83,43 @@ const statusTone = (s: string) => {
   return { bg: "#E2E8F0", bd: "#CBD5E1", tx: "#334155" };
 };
 
+const safeStr = (v: any) => (v == null ? "" : String(v));
+
+async function readJsonSafe(res: Response) {
+  try {
+    return await res.json();
+  } catch {
+    return {};
+  }
+}
+
+function extractErrMessage(json: any, fallback: string) {
+  if (!json) return fallback;
+  if (typeof json.detail === "string") return json.detail;
+  if (typeof json.message === "string") return json.message;
+  if (Array.isArray(json.detail) && json.detail.length) {
+    const first = json.detail[0];
+    if (typeof first?.msg === "string") return first.msg;
+  }
+  return fallback;
+}
+
 export default function SubmissionDetails() {
-  const { eventId, sessionId } = useLocalSearchParams<{ eventId: string; sessionId: string }>();
+  // Accept multiple param names to avoid "wrong id passed" bugs
+  const params = useLocalSearchParams<{
+    eventId?: string;
+    sessionId?: string;
+    subId?: string;
+    submissionId?: string;
+    id?: string;
+  }>();
+
+  const eventId = safeStr(params.eventId);
+  const sessionIdParam = safeStr(params.sessionId);
+  const subIdParam = safeStr(params.subId || params.submissionId || params.id);
+
+  // Prefer sessionId; fallback to subId
+  const resolvedId = sessionIdParam || subIdParam;
 
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<SubmissionSummary | null>(null);
@@ -98,22 +133,39 @@ export default function SubmissionDetails() {
         setLoading(true);
         setError(null);
 
-        if (!sessionId) {
-          throw new Error("Missing sessionId.");
+        if (!resolvedId) {
+          throw new Error("Missing sessionId/subId in route params.");
         }
 
-        // ✅ preferred endpoint (change if your backend differs)
-        const res = await authFetch(`/student/activity/sessions/${sessionId}`, { method: "GET" });
-        const json = await res.json().catch(() => ({}));
+        // Try endpoints in best-to-worst order
+        const candidates = [
+          // ✅ Activity session details (your current backend query shows this exists)
+          `/student/activity/sessions/${resolvedId}`,
 
-        if (!res.ok) {
-          const msg =
-            typeof json?.detail === "string"
-              ? json.detail
-              : typeof json?.message === "string"
-              ? json.message
-              : "Failed to load submission details.";
-          throw new Error(msg);
+          // (optional fallbacks if some screens are event submissions)
+          `/student/submissions/${resolvedId}`,
+          `/student/activity/submissions/${resolvedId}`,
+        ];
+
+        let lastErr = "Failed to load submission details.";
+        let json: any = null;
+        let ok = false;
+
+        for (const path of candidates) {
+          const res = await authFetch(path, { method: "GET" });
+          const body = await readJsonSafe(res);
+
+          if (res.ok) {
+            ok = true;
+            json = body;
+            break;
+          } else {
+            lastErr = extractErrMessage(body, `${res.status} ${res.statusText}`);
+          }
+        }
+
+        if (!ok || !json) {
+          throw new Error(lastErr);
         }
 
         if (!mounted) return;
@@ -122,15 +174,15 @@ export default function SubmissionDetails() {
           status: json.status ?? json.submission_status ?? "SUBMITTED",
           total_minutes: json.total_minutes ?? json.duration_minutes ?? json.worked_minutes,
           total_hours: json.total_hours ?? json.duration_hours,
-          points: json.points ?? json.points_earned ?? json.activity_points,
+          points: json.points ?? json.points_earned ?? json.activity_points ?? json.total_activity_points,
 
           started_at: json.started_at,
           submitted_at: json.submitted_at,
           approved_at: json.approved_at,
           rejected_at: json.rejected_at,
 
-          activity_name: json.activity_name ?? json.activity?.name,
-          event_title: json.event_title ?? json.event?.title,
+          activity_name: json.activity_name ?? json.activity?.name ?? json.activityType?.name,
+          event_title: json.event_title ?? json.event?.title ?? json.eventTitle,
         };
 
         setData(normalized);
@@ -145,7 +197,7 @@ export default function SubmissionDetails() {
     return () => {
       mounted = false;
     };
-  }, [sessionId]);
+  }, [resolvedId]);
 
   const durationText = useMemo(() => {
     if (!data) return "-";
@@ -175,6 +227,12 @@ export default function SubmissionDetails() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
           <Text style={styles.err}>{error || "No data"}</Text>
+
+          {/* Quick hint to catch wrong-id issues */}
+          <Text style={[styles.muted, { textAlign: "center", marginTop: 8 }]}>
+            Debug: resolvedId = {resolvedId || "-"} | eventId = {eventId || "-"}
+          </Text>
+
           <TouchableOpacity onPress={() => router.back()} style={styles.btn}>
             <Text style={styles.btnText}>Go Back</Text>
           </TouchableOpacity>
@@ -248,7 +306,11 @@ export default function SubmissionDetails() {
             onPress={() =>
               router.push({
                 pathname: "/(student)/activity-camera",
-                params: { sessionId: String(sessionId), eventId: String(eventId || "") },
+                params: {
+                  // pass as sessionId always (camera expects session)
+                  sessionId: String(resolvedId),
+                  eventId: String(eventId || ""),
+                },
               })
             }
             style={[styles.btn, { marginTop: 14 }]}
@@ -265,6 +327,7 @@ export default function SubmissionDetails() {
   );
 }
 
+// keep your styles (same as your file)
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#F6F8FC" },
   container: { padding: 16, paddingBottom: 40 },

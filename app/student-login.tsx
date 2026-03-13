@@ -31,18 +31,18 @@ const API_BASE = "http://31.97.230.171:8000/api";
 
 // ─── Colour tokens ──────────────────────────────────────────
 const C = {
-  forest:      "#0B2D6B",   // primary — deep navy blue
-  forestMid:   "#1A47A0",   // mid blue
-  forestLight: "#3B6FD4",   // light blue
-  sage:        "#C7D8F5",   // soft blue border
-  sageLight:   "#EBF1FB",   // pale blue bg
-  gold:        "#C9952A",   // gold accent (keep)
-  white:       "#FFFFFF",
-  ink:         "#111827",
-  muted:       "#6B7280",
-  danger:      "#DC2626",
-  success:     "#16A34A",
-  warn:        "#D97706",
+  forest: "#0B2D6B", // primary — deep navy blue
+  forestMid: "#1A47A0", // mid blue
+  forestLight: "#3B6FD4", // light blue
+  sage: "#C7D8F5", // soft blue border
+  sageLight: "#EBF1FB", // pale blue bg
+  gold: "#C9952A", // gold accent (keep)
+  white: "#FFFFFF",
+  ink: "#111827",
+  muted: "#6B7280",
+  danger: "#DC2626",
+  success: "#16A34A",
+  warn: "#D97706",
 };
 
 // ─── Toast component ─────────────────────────────────────────
@@ -56,7 +56,7 @@ interface ToastProps {
 
 function Toast({ message, type, visible }: ToastProps) {
   const translateY = useRef(new Animated.Value(-100)).current;
-  const opacity    = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
@@ -87,18 +87,18 @@ function Toast({ message, type, visible }: ToastProps) {
         }),
       ]).start();
     }
-  }, [visible]);
+  }, [visible, opacity, translateY]);
 
   const bgColor = {
     success: C.success,
-    error:   C.danger,
-    info:    C.forest,
+    error: C.danger,
+    info: C.forest,
   }[type];
 
   const icon = {
     success: <CheckCircle size={18} color="#fff" strokeWidth={2.5} />,
-    error:   <Shield size={18} color="#fff" strokeWidth={2.5} />,
-    info:    <Sparkles size={18} color="#fff" strokeWidth={2.5} />,
+    error: <Shield size={18} color="#fff" strokeWidth={2.5} />,
+    info: <Sparkles size={18} color="#fff" strokeWidth={2.5} />,
   }[type];
 
   return (
@@ -117,29 +117,39 @@ function Toast({ message, type, visible }: ToastProps) {
 
 const toastStyles = StyleSheet.create({
   container: {
-    position:       "absolute",
-    top:            56,
-    left:           20,
-    right:          20,
-    flexDirection:  "row",
-    alignItems:     "center",
-    gap:            10,
+    position: "absolute",
+    top: 56,
+    left: 20,
+    right: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
     paddingVertical: 14,
     paddingHorizontal: 18,
-    borderRadius:   14,
-    zIndex:         999,
-    shadowColor:    "#000",
-    shadowOffset:   { width: 0, height: 4 },
-    shadowOpacity:  0.18,
-    shadowRadius:   12,
-    elevation:      8,
+    borderRadius: 14,
+    zIndex: 999,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  text: { color: "#fff", fontSize: 14, fontWeight: "600", flex: 1, lineHeight: 20 },
+  text: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+    flex: 1,
+    lineHeight: 20,
+  },
 });
 
 // ─── useToast hook ────────────────────────────────────────────
 function useToast() {
-  const [toast, setToast] = useState<{ message: string; type: ToastType; visible: boolean }>({
+  const [toast, setToast] = useState<{
+    message: string;
+    type: ToastType;
+    visible: boolean;
+  }>({
     message: "",
     type: "info",
     visible: false,
@@ -158,7 +168,15 @@ function useToast() {
 }
 
 // ─── OTP digit boxes ──────────────────────────────────────────
-function OtpInput({ value, onChange, disabled }: { value: string; onChange: (v: string) => void; disabled: boolean }) {
+function OtpInput({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled: boolean;
+}) {
   const digits = value.padEnd(6, " ").split("").slice(0, 6);
   const inputRef = useRef<TextInput>(null);
 
@@ -211,14 +229,18 @@ const otpStyles = StyleSheet.create({
     alignItems: "center",
   },
   boxFilled: { borderColor: C.forestMid, backgroundColor: "#fff" },
-  boxActive: { borderColor: C.forestMid, borderWidth: 2, backgroundColor: "#fff" },
-  digit:       { fontSize: 22, fontWeight: "700", color: C.muted },
+  boxActive: {
+    borderColor: C.forestMid,
+    borderWidth: 2,
+    backgroundColor: "#fff",
+  },
+  digit: { fontSize: 22, fontWeight: "700", color: C.muted },
   digitFilled: { color: C.forest },
   cursor: {
-    position:  "absolute",
-    bottom:    12,
-    width:     2,
-    height:    20,
+    position: "absolute",
+    bottom: 12,
+    width: 2,
+    height: 20,
     backgroundColor: C.forest,
     borderRadius: 1,
   },
@@ -236,31 +258,55 @@ function DecorCircles() {
 }
 const dec = StyleSheet.create({
   c1: {
-    position: "absolute", top: -60, right: -60,
-    width: 180, height: 180, borderRadius: 90,
-    backgroundColor: C.forestLight, opacity: 0.12,
+    position: "absolute",
+    top: -60,
+    right: -60,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: C.forestLight,
+    opacity: 0.12,
   },
   c2: {
-    position: "absolute", top: 40, right: 20,
-    width: 80, height: 80, borderRadius: 40,
-    backgroundColor: C.gold, opacity: 0.10,
+    position: "absolute",
+    top: 40,
+    right: 20,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: C.gold,
+    opacity: 0.1,
   },
   c3: {
-    position: "absolute", top: -20, left: -30,
-    width: 120, height: 120, borderRadius: 60,
-    backgroundColor: C.forest, opacity: 0.08,
+    position: "absolute",
+    top: -20,
+    left: -30,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: C.forest,
+    opacity: 0.08,
   },
 });
 
 // ─── Dot pattern strip ────────────────────────────────────────
 function DotStrip() {
   return (
-    <View style={{ flexDirection: "row", gap: 6, justifyContent: "center", marginBottom: 20 }}>
+    <View
+      style={{
+        flexDirection: "row",
+        gap: 6,
+        justifyContent: "center",
+        marginBottom: 20,
+      }}
+    >
       {Array.from({ length: 18 }).map((_, i) => (
         <View
           key={i}
           style={{
-            width: 4, height: 4, borderRadius: 2,
+            width: 4,
+            height: 4,
+            borderRadius: 2,
             backgroundColor: i % 3 === 0 ? C.gold : C.sage,
             opacity: 0.6,
           }}
@@ -272,55 +318,85 @@ function DotStrip() {
 
 // ─── Main screen ──────────────────────────────────────────────
 export default function StudentLogin() {
-  const [email,      setEmail]      = useState("");
-  const [otp,        setOtp]        = useState("");
-  const [otpSent,    setOtpSent]    = useState(false);
-  const [loadSend,   setLoadSend]   = useState(false);
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [loadSend, setLoadSend] = useState(false);
   const [loadVerify, setLoadVerify] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const { toast, showToast } = useToast();
 
   // Fade-in on mount
-  const fadeAnim  = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(fadeAnim,  { toValue: 1, duration: 600, useNativeDriver: true }),
-      Animated.spring(slideAnim, { toValue: 0, tension: 60, friction: 12, useNativeDriver: true }),
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 60,
+        friction: 12,
+        useNativeDriver: true,
+      }),
     ]).start();
-  }, []);
+  }, [fadeAnim, slideAnim]);
 
   // OTP card slide-in
   const otpAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (otpSent) {
       Animated.spring(otpAnim, {
-        toValue: 1, tension: 60, friction: 12, useNativeDriver: true,
+        toValue: 1,
+        tension: 60,
+        friction: 12,
+        useNativeDriver: true,
       }).start();
     }
-  }, [otpSent]);
+  }, [otpSent, otpAnim]);
 
   const requestOtp = async () => {
     const e = email.trim().toLowerCase();
-    if (!e) { showToast("Please enter your registered email address", "error"); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
-      showToast("Please enter a valid email address", "error"); return;
+
+    if (!agreedToTerms) {
+      showToast("Please agree to the Terms & Conditions and Privacy Policy", "error");
+      return;
     }
+
+    if (!e) {
+      showToast("Please enter your registered email address", "error");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
+      showToast("Please enter a valid email address", "error");
+      return;
+    }
+
     setLoadSend(true);
     try {
-      const res  = await fetch(`${API_BASE}/auth/student/request-otp`, {
+      const res = await fetch(`${API_BASE}/auth/student/request-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: e }),
       });
-      const raw = await res.text();
-console.log("verify-otp status:", res.status);
-console.log("verify-otp raw:", raw);
 
-let data: any = {};
-try { data = raw ? JSON.parse(raw) : {}; } catch {}
+      const raw = await res.text();
+      console.log("request-otp status:", res.status);
+      console.log("request-otp raw:", raw);
+
+      let data: any = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {}
+
       if (!res.ok) {
-        showToast(data?.detail || "Unable to send OTP. Please try again.", "error"); return;
+        showToast(data?.detail || "Unable to send OTP. Please try again.", "error");
+        return;
       }
+
       setOtpSent(true);
       setOtp("");
       showToast("OTP sent! Check your inbox.", "success");
@@ -331,111 +407,137 @@ try { data = raw ? JSON.parse(raw) : {}; } catch {}
     }
   };
 
-const verifyOtp = async () => {
-  const e = email.trim().toLowerCase();
-  const o = otp.trim();
+  const verifyOtp = async () => {
+    const e = email.trim().toLowerCase();
+    const o = otp.trim();
 
-  if (!e) { showToast("Email is missing", "error"); return; }
-  if (o.length < 6) { showToast("Enter the complete 6-digit OTP", "error"); return; }
-
-  setLoadVerify(true);
-  try {
-    const payload: any = { email: e, otp: o, otp_code: o, code: o, otpCode: o };
-    const otpNum = Number(o);
-    if (Number.isFinite(otpNum)) payload.otp_number = otpNum;
-
-    const res = await fetch(`${API_BASE}/auth/student/verify-otp`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    const raw = await res.text();
-    let data: any = {};
-    try { data = raw ? JSON.parse(raw) : {}; } catch {}
-
-    if (!res.ok) {
-      console.log("verify-otp status:", res.status);
-      console.log("verify-otp raw:", raw);
-      showToast(data?.detail || "Invalid OTP / request format mismatch", "error");
+    if (!agreedToTerms) {
+      showToast("Please agree to the Terms & Conditions and Privacy Policy", "error");
       return;
     }
 
-    const token = data?.access_token ?? data?.token ?? data?.accessToken;
-    if (!token) {
-      console.log("verify-otp response:", data);
-      showToast("Token missing from server response", "error");
+    if (!e) {
+      showToast("Email is missing", "error");
+      return;
+    }
+    if (o.length < 6) {
+      showToast("Enter the complete 6-digit OTP", "error");
       return;
     }
 
-    await AsyncStorage.multiSet([
-      ["role", "student"],
-      ["access_token", token], // store in a standard key
-      ["token", token],        // keep for backward compatibility
-      ["student_email", e],
-    ]);
+    setLoadVerify(true);
+    try {
+      const payload: any = {
+        email: e,
+        otp: o,
+        otp_code: o,
+        code: o,
+        otpCode: o,
+      };
 
-    const profileRes = await fetch(`${API_BASE}/students/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+      const otpNum = Number(o);
+      if (Number.isFinite(otpNum)) payload.otp_number = otpNum;
 
-    const profileRaw = await profileRes.text();
-    let profile: any = {};
-    try { profile = profileRaw ? JSON.parse(profileRaw) : {}; } catch {}
+      const res = await fetch(`${API_BASE}/auth/student/verify-otp`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
 
-    if (!profileRes.ok) {
-      console.log("students/me status:", profileRes.status);
-      console.log("students/me raw:", profileRaw);
-      showToast(profile?.detail || `Profile fetch failed (${profileRes.status})`, "error");
-      router.replace("/(student)/dashboard");
-      return;
+      const raw = await res.text();
+      let data: any = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {}
+
+      if (!res.ok) {
+        console.log("verify-otp status:", res.status);
+        console.log("verify-otp raw:", raw);
+        showToast(data?.detail || "Invalid OTP / request format mismatch", "error");
+        return;
+      }
+
+      const token = data?.access_token ?? data?.token ?? data?.accessToken;
+      if (!token) {
+        console.log("verify-otp response:", data);
+        showToast("Token missing from server response", "error");
+        return;
+      }
+
+      await AsyncStorage.multiSet([
+        ["role", "student"],
+        ["access_token", token],
+        ["token", token],
+        ["student_email", e],
+        ["terms_accepted", "true"],
+      ]);
+
+      const profileRes = await fetch(`${API_BASE}/students/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const profileRaw = await profileRes.text();
+      let profile: any = {};
+      try {
+        profile = profileRaw ? JSON.parse(profileRaw) : {};
+      } catch {}
+
+      if (!profileRes.ok) {
+        console.log("students/me status:", profileRes.status);
+        console.log("students/me raw:", profileRaw);
+        showToast(profile?.detail || `Profile fetch failed (${profileRes.status})`, "error");
+        router.replace("/(student)/dashboard");
+        return;
+      }
+
+      const studentId = profile?.id;
+      const faceEnrolled = profile?.face_enrolled === true;
+
+      if (!studentId) {
+        showToast("Student ID missing in profile", "error");
+        router.replace("/(student)/dashboard");
+        return;
+      }
+
+      await AsyncStorage.multiSet([
+        ["student_id", String(studentId)],
+        ["face_enrolled", faceEnrolled ? "true" : "false"],
+      ]);
+
+      showToast("Login successful! Redirecting…", "success");
+      setTimeout(() => {
+        if (!faceEnrolled) router.replace("/(student)/face-enroll");
+        else router.replace("/(student)/dashboard");
+      }, 600);
+    } catch (err: any) {
+      showToast(err?.message || "Network error — could not reach server", "error");
+    } finally {
+      setLoadVerify(false);
     }
+  };
 
-    const studentId = profile?.id;
-    const faceEnrolled = profile?.face_enrolled === true;
-
-    if (!studentId) {
-      showToast("Student ID missing in profile", "error");
-      router.replace("/(student)/dashboard");
-      return;
-    }
-
-    await AsyncStorage.multiSet([
-      ["student_id", String(studentId)],
-      ["face_enrolled", faceEnrolled ? "true" : "false"],
-    ]);
-
-    showToast("Login successful! Redirecting…", "success");
-    setTimeout(() => {
-      if (!faceEnrolled) router.replace("/(student)/face-enroll");
-      else router.replace("/(student)/dashboard");
-    }, 600);
-
-  } catch (err: any) {
-    showToast(err?.message || "Network error — could not reach server", "error");
-  } finally {
-    setLoadVerify(false);
-  }
-};
+  const buttonDisabled = loadSend || loadVerify || !agreedToTerms;
 
   return (
     <SafeAreaView style={s.safe}>
-
-      {/* Toast */}
       <Toast message={toast.message} type={toast.type} visible={toast.visible} />
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
         <ScrollView
           contentContainerStyle={s.scroll}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-
           {/* ── Header band ─────────────────────────────── */}
           <View style={s.header}>
             <DecorCircles />
 
-            {/* Nav row */}
             <View style={s.navRow}>
               <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
                 <ArrowLeft size={20} color={C.white} strokeWidth={2.5} />
@@ -445,7 +547,6 @@ const verifyOtp = async () => {
               </View>
             </View>
 
-            {/* Hero image */}
             <View style={s.heroImgWrap}>
               <Image
                 source={require("../assets/images/bg/login_header.png")}
@@ -455,24 +556,34 @@ const verifyOtp = async () => {
               <View style={s.heroOverlay} />
             </View>
 
-            {/* Hero text */}
             <View style={s.heroTextWrap}>
               <View style={s.tagRow}>
-                <View style={s.tag}><Text style={s.tagText}>AICTE · VTU</Text></View>
-                <View style={s.tag}><Text style={s.tagText}>Social Activity Tracker</Text></View>
+                <View style={s.tag}>
+                  <Text style={s.tagText}>AICTE · VTU</Text>
+                </View>
+                <View style={s.tag}>
+                  <Text style={s.tagText}>Social Activity Tracker</Text>
+                </View>
               </View>
               <Text style={s.heroTitle}>Track. Earn.{"\n"}Get Rewarded.</Text>
-              <Text style={s.heroSub}>Log activities · Earn verified certificates</Text>
+              <Text style={s.heroSub}>
+                Log activities · Earn verified certificates
+              </Text>
             </View>
 
-            {/* Pull handle */}
             <View style={s.pullHandle} />
           </View>
 
           {/* ── Form card ──────────────────────────────── */}
-          <Animated.View style={[s.card, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-
-            {/* Card header */}
+          <Animated.View
+            style={[
+              s.card,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
             <View style={s.cardHeader}>
               <View style={s.iconCircle}>
                 <Mail size={22} color={C.white} strokeWidth={2} />
@@ -485,14 +596,23 @@ const verifyOtp = async () => {
 
             <DotStrip />
 
-            {/* Step indicator */}
             <View style={s.stepRow}>
               {["Enter Email", "Verify OTP"].map((label, i) => (
                 <View key={i} style={s.stepItem}>
-                  <View style={[s.stepDot, (otpSent ? i <= 1 : i === 0) && s.stepDotActive]}>
+                  <View
+                    style={[
+                      s.stepDot,
+                      (otpSent ? i <= 1 : i === 0) && s.stepDotActive,
+                    ]}
+                  >
                     <Text style={s.stepNum}>{i + 1}</Text>
                   </View>
-                  <Text style={[s.stepLabel, (otpSent ? i <= 1 : i === 0) && s.stepLabelActive]}>
+                  <Text
+                    style={[
+                      s.stepLabel,
+                      (otpSent ? i <= 1 : i === 0) && s.stepLabelActive,
+                    ]}
+                  >
                     {label}
                   </Text>
                   {i < 1 && (
@@ -502,11 +622,14 @@ const verifyOtp = async () => {
               ))}
             </View>
 
-            {/* Email field */}
             <View style={s.fieldGroup}>
               <Text style={s.fieldLabel}>Registered Email Address</Text>
               <View style={[s.fieldWrap, email.length > 0 && s.fieldWrapActive]}>
-                <Mail size={18} color={email.length > 0 ? C.forest : C.muted} strokeWidth={2} />
+                <Mail
+                  size={18}
+                  color={email.length > 0 ? C.forest : C.muted}
+                  strokeWidth={2}
+                />
                 <TextInput
                   placeholder="your.email@institution.edu"
                   placeholderTextColor="#9CA3AF"
@@ -518,20 +641,32 @@ const verifyOtp = async () => {
                   editable={!loadSend && !loadVerify}
                 />
                 {email.length > 6 && (
-                  <CheckCircle size={16} color={C.forestLight} strokeWidth={2.5} />
+                  <CheckCircle
+                    size={16}
+                    color={C.forestLight}
+                    strokeWidth={2.5}
+                  />
                 )}
               </View>
-              <Text style={s.fieldHint}>Only registered student accounts can receive OTP</Text>
+              <Text style={s.fieldHint}>
+                Only registered student accounts can receive OTP
+              </Text>
             </View>
 
-            {/* OTP field — animated in */}
             {otpSent && (
               <Animated.View
                 style={[
                   s.otpSection,
                   {
                     opacity: otpAnim,
-                    transform: [{ translateY: otpAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }],
+                    transform: [
+                      {
+                        translateY: otpAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [20, 0],
+                        }),
+                      },
+                    ],
                   },
                 ]}
               >
@@ -542,8 +677,14 @@ const verifyOtp = async () => {
                     disabled={loadSend || loadVerify}
                     style={s.resendBtn}
                   >
-                    <RefreshCw size={13} color={C.forestMid} strokeWidth={2.5} />
-                    <Text style={s.resendText}>{loadSend ? "Sending…" : "Resend"}</Text>
+                    <RefreshCw
+                      size={13}
+                      color={C.forestMid}
+                      strokeWidth={2.5}
+                    />
+                    <Text style={s.resendText}>
+                      {loadSend ? "Sending…" : "Resend"}
+                    </Text>
                   </TouchableOpacity>
                 </View>
 
@@ -551,19 +692,60 @@ const verifyOtp = async () => {
 
                 <View style={s.otpHintRow}>
                   <Shield size={12} color={C.muted} strokeWidth={2} />
-                  <Text style={s.fieldHint}>Valid for 10 minutes · Do not share with anyone</Text>
+                  <Text style={s.fieldHint}>
+                    Valid for 10 minutes · Do not share with anyone
+                  </Text>
                 </View>
               </Animated.View>
             )}
 
+            {/* Terms checkbox */}
+            <TouchableOpacity
+              style={s.checkboxRow}
+              activeOpacity={0.85}
+              onPress={() => setAgreedToTerms((prev) => !prev)}
+              disabled={loadSend || loadVerify}
+            >
+              <View
+                style={[
+                  s.checkbox,
+                  agreedToTerms && s.checkboxChecked,
+                ]}
+              >
+                {agreedToTerms && (
+                  <CheckCircle size={14} color="#fff" strokeWidth={2.8} />
+                )}
+              </View>
+
+              <Text style={s.checkboxText}>
+                I agree to the{" "}
+                <Text
+                  style={s.termsLink}
+                  onPress={() => router.push("/(student)/terms-faq")}
+                >
+                  Terms & Conditions
+                </Text>{" "}
+                and{" "}
+                <Text
+                  style={s.termsLink}
+                  onPress={() => router.push("/(student)/terms-faq")}
+                >
+                  Privacy Policy
+                </Text>
+              </Text>
+            </TouchableOpacity>
+
             {/* CTA button */}
             <TouchableOpacity
-              style={[s.cta, (loadSend || loadVerify) && { opacity: 0.75 }]}
+              style={[
+                s.cta,
+                buttonDisabled && s.ctaDisabled,
+              ]}
               onPress={otpSent ? verifyOtp : requestOtp}
-              disabled={loadSend || loadVerify}
+              disabled={buttonDisabled}
               activeOpacity={0.85}
             >
-              {(loadSend || loadVerify) ? (
+              {loadSend || loadVerify ? (
                 <ActivityIndicator color="#fff" />
               ) : otpSent ? (
                 <CheckCircle size={20} color="#fff" strokeWidth={2.5} />
@@ -571,20 +753,38 @@ const verifyOtp = async () => {
                 <Send size={20} color="#fff" strokeWidth={2.5} />
               )}
               <Text style={s.ctaText}>
-                {loadSend ? "Sending OTP…" : loadVerify ? "Verifying…" : otpSent ? "Verify & Sign In" : "Send OTP"}
+                {loadSend
+                  ? "Sending OTP…"
+                  : loadVerify
+                  ? "Verifying…"
+                  : otpSent
+                  ? "Verify & Sign In"
+                  : "Send OTP"}
               </Text>
             </TouchableOpacity>
 
-            {/* Gold accent strip */}
             <View style={s.goldStrip} />
 
-            {/* Footer note */}
+            <TouchableOpacity
+              onPress={() => router.push("/(student)/terms-faq")}
+              activeOpacity={0.8}
+              style={s.termsRow}
+            >
+              <Shield size={13} color={C.muted} strokeWidth={2} />
+              <Text style={s.termsText}>
+                Please review our{" "}
+                <Text style={s.termsLink}>Terms & Conditions</Text>
+                {" "}and{" "}
+                <Text style={s.termsLink}>Privacy Policy</Text>
+                {" "}before continuing
+              </Text>
+            </TouchableOpacity>
+
             <Text style={s.footerNote}>
               Vikasana Foundation · AICTE Approved · VTU Affiliated
             </Text>
           </Animated.View>
 
-          {/* Bottom landscape */}
           <View style={s.bottomBar}>
             <Image
               source={require("../assets/images/bg/login_header.png")}
@@ -592,9 +792,10 @@ const verifyOtp = async () => {
               resizeMode="cover"
             />
             <View style={s.bottomOverlay} />
-            <Text style={s.bottomText}>Empowering Communities Through Education</Text>
+            <Text style={s.bottomText}>
+              Empowering Communities Through Education
+            </Text>
           </View>
-
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -603,7 +804,7 @@ const verifyOtp = async () => {
 
 // ─── Main styles ──────────────────────────────────────────────
 const s = StyleSheet.create({
-  safe:   { flex: 1, backgroundColor: C.forest },
+  safe: { flex: 1, backgroundColor: C.forest },
   scroll: { flexGrow: 1, backgroundColor: "#F4F7F4" },
 
   // Header
@@ -622,48 +823,79 @@ const s = StyleSheet.create({
     paddingBottom: 14,
   },
   backBtn: {
-    width: 38, height: 38, borderRadius: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     backgroundColor: "rgba(255,255,255,0.15)",
-    justifyContent: "center", alignItems: "center",
+    justifyContent: "center",
+    alignItems: "center",
   },
   orgBadge: {
-    paddingHorizontal: 12, paddingVertical: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     backgroundColor: "rgba(255,255,255,0.12)",
-    borderRadius: 20, borderWidth: 1,
+    borderRadius: 20,
+    borderWidth: 1,
     borderColor: "rgba(255,255,255,0.2)",
   },
-  orgText: { color: "#fff", fontSize: 10, fontWeight: "700", letterSpacing: 1.5 },
+  orgText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1.5,
+  },
 
   heroImgWrap: { width: "100%", height: 160, position: "relative" },
-  heroImg:     { width: "100%", height: "100%" },
+  heroImg: { width: "100%", height: "100%" },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: C.forest,
     opacity: 0.45,
   },
 
-  heroTextWrap: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 10 },
-  tagRow:  { flexDirection: "row", gap: 8, marginBottom: 12 },
+  heroTextWrap: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 10,
+  },
+  tagRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
   tag: {
-    paddingHorizontal: 10, paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     backgroundColor: "rgba(201,149,42,0.25)",
-    borderRadius: 6, borderWidth: 1,
+    borderRadius: 6,
+    borderWidth: 1,
     borderColor: "rgba(201,149,42,0.4)",
   },
-  tagText: { color: C.gold, fontSize: 10, fontWeight: "700", letterSpacing: 0.8 },
+  tagText: {
+    color: C.gold,
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+  },
 
   heroTitle: {
-    fontSize: 34, fontWeight: "800", color: "#fff",
-    lineHeight: 40, letterSpacing: -0.5,
+    fontSize: 34,
+    fontWeight: "800",
+    color: "#fff",
+    lineHeight: 40,
+    letterSpacing: -0.5,
   },
   heroSub: {
-    marginTop: 8, fontSize: 13, color: "rgba(255,255,255,0.7)", fontWeight: "500",
+    marginTop: 8,
+    fontSize: 13,
+    color: "rgba(255,255,255,0.7)",
+    fontWeight: "500",
   },
 
   pullHandle: {
-    width: 40, height: 4, borderRadius: 2,
+    width: 40,
+    height: 4,
+    borderRadius: 2,
     backgroundColor: "rgba(255,255,255,0.3)",
-    alignSelf: "center", marginTop: 20, marginBottom: 0,
+    alignSelf: "center",
+    marginTop: 20,
+    marginBottom: 0,
   },
 
   // Card
@@ -682,17 +914,37 @@ const s = StyleSheet.create({
     elevation: 8,
     flex: 1,
   },
-  cardHeader: { flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 20 },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    marginBottom: 20,
+  },
   iconCircle: {
-    width: 48, height: 48, borderRadius: 14,
+    width: 48,
+    height: 48,
+    borderRadius: 14,
     backgroundColor: C.forest,
-    justifyContent: "center", alignItems: "center",
+    justifyContent: "center",
+    alignItems: "center",
     shadowColor: C.forest,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 8, elevation: 4,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  cardTitle: { fontSize: 20, fontWeight: "800", color: C.ink, letterSpacing: -0.3 },
-  cardSub:   { fontSize: 12, color: C.muted, marginTop: 2, fontWeight: "500" },
+  cardTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: C.ink,
+    letterSpacing: -0.3,
+  },
+  cardSub: {
+    fontSize: 12,
+    color: C.muted,
+    marginTop: 2,
+    fontWeight: "500",
+  },
 
   // Steps
   stepRow: {
@@ -701,25 +953,42 @@ const s = StyleSheet.create({
     marginBottom: 28,
     paddingHorizontal: 4,
   },
-  stepItem:  { flexDirection: "row", alignItems: "center", flex: 1 },
+  stepItem: { flexDirection: "row", alignItems: "center", flex: 1 },
   stepDot: {
-    width: 28, height: 28, borderRadius: 14,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: "#E5E7EB",
-    justifyContent: "center", alignItems: "center",
+    justifyContent: "center",
+    alignItems: "center",
   },
   stepDotActive: { backgroundColor: C.forest },
   stepNum: { fontSize: 12, fontWeight: "700", color: "#fff" },
-  stepLabel: { fontSize: 11, color: C.muted, marginLeft: 6, fontWeight: "500" },
+  stepLabel: {
+    fontSize: 11,
+    color: C.muted,
+    marginLeft: 6,
+    fontWeight: "500",
+  },
   stepLabelActive: { color: C.forest, fontWeight: "700" },
   stepLine: {
-    flex: 1, height: 2, backgroundColor: "#E5E7EB",
-    marginHorizontal: 6, borderRadius: 1,
+    flex: 1,
+    height: 2,
+    backgroundColor: "#E5E7EB",
+    marginHorizontal: 6,
+    borderRadius: 1,
   },
   stepLineActive: { backgroundColor: C.forest },
 
   // Fields
   fieldGroup: { marginBottom: 20 },
-  fieldLabel: { fontSize: 13, fontWeight: "700", color: C.forest, marginBottom: 8, letterSpacing: 0.2 },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: C.forest,
+    marginBottom: 8,
+    letterSpacing: 0.2,
+  },
   fieldWrap: {
     flexDirection: "row",
     alignItems: "center",
@@ -734,21 +1003,64 @@ const s = StyleSheet.create({
   fieldWrapActive: { borderColor: C.forestMid, backgroundColor: "#fff" },
   fieldInput: { flex: 1, paddingVertical: 13, fontSize: 14, color: C.ink },
   fieldHint: {
-    marginTop: 6, fontSize: 11, color: C.muted,
-    fontStyle: "italic", paddingLeft: 2,
+    marginTop: 6,
+    fontSize: 11,
+    color: C.muted,
+    fontStyle: "italic",
+    paddingLeft: 2,
   },
 
   // OTP section
   otpSection: { marginBottom: 24 },
   otpHeaderRow: {
-    flexDirection: "row", justifyContent: "space-between",
-    alignItems: "center", marginBottom: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 14,
   },
   resendBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
-  resendText: { fontSize: 13, color: C.forestMid, fontWeight: "600", textDecorationLine: "underline" },
+  resendText: {
+    fontSize: 13,
+    color: C.forestMid,
+    fontWeight: "600",
+    textDecorationLine: "underline",
+  },
   otpHintRow: {
-    flexDirection: "row", alignItems: "center",
-    gap: 6, marginTop: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 14,
+  },
+
+  // Checkbox
+  checkboxRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginBottom: 18,
+    paddingHorizontal: 2,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 7,
+    borderWidth: 1.8,
+    borderColor: C.sage,
+    backgroundColor: C.sageLight,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+  },
+  checkboxChecked: {
+    backgroundColor: C.forest,
+    borderColor: C.forest,
+  },
+  checkboxText: {
+    flex: 1,
+    fontSize: 12,
+    color: C.muted,
+    lineHeight: 18,
+    fontWeight: "500",
   },
 
   // CTA
@@ -762,29 +1074,43 @@ const s = StyleSheet.create({
     gap: 10,
     shadowColor: C.forest,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.30,
+    shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 6,
     marginBottom: 24,
   },
-  ctaText: { color: "#fff", fontSize: 16, fontWeight: "800", letterSpacing: 0.4 },
+  ctaDisabled: {
+    opacity: 0.55,
+  },
+  ctaText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+  },
 
   // Gold strip + footer
   goldStrip: {
-    height: 3, borderRadius: 2,
+    height: 3,
+    borderRadius: 2,
     backgroundColor: C.gold,
     marginBottom: 16,
     opacity: 0.7,
   },
   footerNote: {
-    textAlign: "center", fontSize: 11, color: "#9CA3AF",
-    marginBottom: 28, letterSpacing: 0.3,
+    textAlign: "center",
+    fontSize: 11,
+    color: "#9CA3AF",
+    marginBottom: 28,
+    letterSpacing: 0.3,
   },
 
   // Bottom bar
   bottomBar: {
-    height: 100, width: "100%",
-    position: "relative", overflow: "hidden",
+    height: 100,
+    width: "100%",
+    position: "relative",
+    overflow: "hidden",
     backgroundColor: C.forest,
   },
   bottomImg: { width: "100%", height: "100%", position: "absolute" },
@@ -795,10 +1121,34 @@ const s = StyleSheet.create({
   },
   bottomText: {
     position: "absolute",
-    bottom: 20, left: 0, right: 0,
+    bottom: 20,
+    left: 0,
+    right: 0,
     textAlign: "center",
-    fontSize: 11, color: "rgba(255,255,255,0.7)",
-    fontWeight: "600", letterSpacing: 1.2,
+    fontSize: 11,
+    color: "rgba(255,255,255,0.7)",
+    fontWeight: "600",
+    letterSpacing: 1.2,
     textTransform: "uppercase",
+  },
+
+  termsRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 7,
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  termsText: {
+    flex: 1,
+    fontSize: 11,
+    color: C.muted,
+    lineHeight: 17,
+    fontWeight: "500",
+  },
+  termsLink: {
+    color: C.forestMid,
+    fontWeight: "700",
+    textDecorationLine: "underline",
   },
 });

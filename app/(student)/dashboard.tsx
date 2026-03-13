@@ -41,10 +41,16 @@ const BASE_URL = "http://31.97.230.171:8000/api";
 
 // ─── Storage keys ─────────────────────────────────────────────
 const REG_PREFIX = "reg_";
-const SUB_PREFIX = "sub_"; // stores backend session_id (activity session)
+
 const PROG_PREFIX = "prog_";
-const PROG_SUB_PREFIX = "prog_sub_"; // stores backend session_id
 const DONE_PREFIX = "done_";
+
+// ✅ NEW FLOW keys (EventSubmission based)
+const SUBMISSION_PREFIX = "subm_";          // stores event_submission_id
+const PROG_SUBMISSION_PREFIX = "prog_subm_"; // stores event_submission_id
+
+// ✅ OPTIONAL (only if you later use ActivitySession id anywhere)
+const SESSION_PREFIX = "sess_";             // stores activity_session_id
 
 // ─── Colour tokens ────────────────────────────────────────────
 const C = {
@@ -84,6 +90,8 @@ type Me = {
   email?: string;
   branch?: string;
   face_enrolled?: boolean;
+  total_points_earned?: number;
+  required_total_points?: number;
 };
 
 type ActivitySummary = {
@@ -770,24 +778,34 @@ export default function StudentHome() {
   }, []);
 
   // ── Fetch student profile ───────────────────────────────────
-  const fetchMe = useCallback(async () => {
-    try {
-      const res = await authFetch("/students/me", { method: "GET" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw data?.detail ?? data;
+ const fetchMe = useCallback(async () => {
+  try {
+    const res = await authFetch("/students/me", { method: "GET" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw data?.detail ?? data;
 
-      setMe({
-        id: data?.id,
-        name: data?.name ?? data?.full_name ?? data?.student_name,
-        usn: data?.usn,
-        email: data?.email,
-        branch: data?.branch,
-        face_enrolled: data?.face_enrolled,
-      });
-    } catch {
-      // ignore
-    }
-  }, []);
+    setMe({
+      id: data?.id,
+      name: data?.name ?? data?.full_name ?? data?.student_name,
+      usn: data?.usn,
+      email: data?.email,
+      branch: data?.branch,
+      face_enrolled: data?.face_enrolled,
+      total_points_earned: Number(data?.total_points_earned ?? 0) || 0,
+      required_total_points: Number(data?.required_total_points ?? 0) || 0,
+    });
+
+    setStats((prev) => ({
+      ...prev,
+      total_points: Number(data?.total_points_earned ?? 0) || 0,
+      next_milestone: Number(data?.required_total_points ?? 0) || 0,
+    }));
+  } catch {
+    // ignore
+  }
+}, []);
+
+    
 
   // ── Face enroll redirect ────────────────────────────────────
   const ensureFaceEnroll = useCallback(async () => {
@@ -813,13 +831,8 @@ const fetchStats = useCallback(async () => {
   // helper: fetch list of my sessions/submissions and compute counts
   const computeCountsFallback = async () => {
     const listPaths = [
-      "/student/activity-sessions",
-      "/student/activity/sessions",
-      "/student/sessions",
-      "/student/submissions",
-      "/student/activity/submissions",
-      "/student/history",
-    ];
+  "/student/activity/sessions",   // ✅ correct route
+];
 
     for (const p of listPaths) {
       try {
@@ -871,8 +884,24 @@ const fetchStats = useCallback(async () => {
       const summary = data as Partial<ActivitySummary>;
 
       // points + milestone
-      const earned = Number((summary as any)?.earned_points ?? (summary as any)?.total_points ?? (data as any)?.total_points ?? 0) || 0;
-      const required = Number((summary as any)?.required_points ?? (summary as any)?.next_milestone ?? (data as any)?.required_points ?? 0) || 0;
+      const rawEarned =
+  (summary as any)?.earned_points ??
+  (summary as any)?.total_points ??
+  (summary as any)?.total_points_earned ??
+  (data as any)?.earned_points ??
+  (data as any)?.total_points ??
+  (data as any)?.total_points_earned;
+
+const rawRequired =
+  (summary as any)?.required_points ??
+  (summary as any)?.required_total_points ??
+  (summary as any)?.next_milestone ??
+  (data as any)?.required_points ??
+  (data as any)?.required_total_points ??
+  (data as any)?.next_milestone;
+
+const earned = rawEarned != null ? Number(rawEarned) || 0 : null;
+const required = rawRequired != null ? Number(rawRequired) || 0 : null;
 
       // try getting counts from summary response
       const fromApi = {
@@ -899,15 +928,17 @@ const fetchStats = useCallback(async () => {
       }
 
       setStats((prev) => ({
-        ...prev,
-        total: fallbackCounts?.total ?? (Number.isFinite(fromApi.total) ? fromApi.total : prev.total ?? 0),
-        approved: fallbackCounts?.approved ?? (Number.isFinite(fromApi.approved) ? fromApi.approved : prev.approved ?? 0),
-        pending: fallbackCounts?.pending ?? (Number.isFinite(fromApi.pending) ? fromApi.pending : prev.pending ?? 0),
-        rejected: fallbackCounts?.rejected ?? (Number.isFinite(fromApi.rejected) ? fromApi.rejected : prev.rejected ?? 0),
-        rank: (data as any)?.rank ?? (summary as any)?.rank ?? prev.rank ?? 0,
-        total_points: earned,
-        next_milestone: required,
-      }));
+  ...prev,
+  total: fallbackCounts?.total ?? (Number.isFinite(fromApi.total) ? fromApi.total : prev.total ?? 0),
+  approved: fallbackCounts?.approved ?? (Number.isFinite(fromApi.approved) ? fromApi.approved : prev.approved ?? 0),
+  pending: fallbackCounts?.pending ?? (Number.isFinite(fromApi.pending) ? fromApi.pending : prev.pending ?? 0),
+  rejected: fallbackCounts?.rejected ?? (Number.isFinite(fromApi.rejected) ? fromApi.rejected : prev.rejected ?? 0),
+  rank: (data as any)?.rank ?? (summary as any)?.rank ?? prev.rank ?? 0,
+
+  // ✅ only overwrite if backend actually returned point fields
+  total_points: earned !== null ? earned : prev.total_points ?? 0,
+  next_milestone: required !== null ? required : prev.next_milestone ?? 0,
+}));
 
       return;
     } catch {
@@ -935,7 +966,12 @@ const fetchStats = useCallback(async () => {
 
     const removeKeys: string[] = [];
     for (const id of endedIds) {
-      removeKeys.push(`${PROG_PREFIX}${id}`, `${SUB_PREFIX}${id}`, `${PROG_SUB_PREFIX}${id}`);
+      removeKeys.push(
+  `${PROG_PREFIX}${id}`,
+  `${SUBMISSION_PREFIX}${id}`,
+  `${PROG_SUBMISSION_PREFIX}${id}`,
+  `${SESSION_PREFIX}${id}` // optional
+);
     }
 
     try {
@@ -950,52 +986,32 @@ const fetchStats = useCallback(async () => {
   }, []);
 
   // ── Fetch events ─────────────────────────────────────────────
-  const fetchEvents = useCallback(
-    async (isRefresh = false) => {
-      if (isRefresh) setRefreshing(true);
-      else {
-        setEventsLoading(true);
-        setError(null);
-      }
+const fetchEvents = useCallback(async (isRefresh = false) => {
+  if (isRefresh) setRefreshing(true);
+  else {
+    setEventsLoading(true);
+    setError(null);
+  }
 
-      try {
-        const res = await authFetch("/student/events", { method: "GET" });
-        const data = await res.json().catch(() => []);
-        if (!res.ok) throw data?.detail ?? data;
+  try {
+    const res = await authFetch("/student/events", { method: "GET" });
+    const data = await res.json().catch(() => []);
+    console.log('Raw Events Data:', data);  // Log the response data here
+    if (!res.ok) throw data?.detail ?? data;
 
-        const list: AdminEvent[] = Array.isArray(data) ? data : [];
-        setEvents(list);
+    const list: AdminEvent[] = Array.isArray(data) ? data : [];
+    console.log('Parsed Events:', list); // Log the parsed events
 
-        const map: Record<number, "registered" | "submitted" | "none"> = {};
-        for (const ev of list) {
-          if (typeof ev?.user_registered === "boolean") {
-            map[ev.id] = ev.user_registered ? "registered" : "none";
-          }
-        }
-        if (Object.keys(map).length) {
-          setRegistrations((prev) => {
-            const next = { ...prev };
-            for (const [k, v] of Object.entries(map)) {
-              const id = Number(k);
-              if (v === "registered" && next[id] !== "submitted") next[id] = "registered";
-              if (v === "none" && next[id] !== "submitted") next[id] = "none";
-            }
-            return next;
-          });
-        }
-
-        await cleanupIfEnded(list);
-        setError(null);
-      } catch (err: any) {
-        setError(typeof err === "string" ? err : err?.message ?? "Failed to load activities.");
-      } finally {
-        setEventsLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [cleanupIfEnded]
-  );
-
+    setEvents(list);
+    setError(null);
+  } catch (err: any) {
+    console.error('Error fetching events:', err);
+    setError(typeof err === "string" ? err : err?.message ?? "Failed to load activities.");
+  } finally {
+    setEventsLoading(false);
+    setRefreshing(false);
+  }
+}, []);
   // ── One refresh handler ──────────────────────────────────────
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
@@ -1029,87 +1045,107 @@ const fetchStats = useCallback(async () => {
   );
 
   // ── Start session ────────────────────────────────────────────
-  const startSession = useCallback(
-    async (event: AdminEvent) => {
-      try {
-        const eventId = Number(event?.id);
-        if (!eventId) {
-          Alert.alert("Error", "Missing event_id. Please refresh and try again.");
-          return;
-        }
-
-        const status = deriveStatus(event);
-        if (status !== "ongoing") {
-          const when =
-            status === "upcoming"
-              ? "This activity is not active yet. Please start it on the event day/time."
-              : "This activity has already ended.";
-          Alert.alert("Not available", when);
-          return;
-        }
-
-        await ensureLocation();
-
-        const res = await authFetch(`/student/activity/sessions/from-event?event_id=${eventId}`, { method: "POST" });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          const msg =
-            typeof data?.detail === "string" ? data.detail : typeof data === "string" ? data : safeJsonString(data);
-          throw msg;
-        }
-
-        const sessionId = data?.id ?? data?.session_id ?? data?.activity_session_id;
-        if (!sessionId) throw "Session created but session id missing in response";
-
-        await AsyncStorage.setItem(`${SUB_PREFIX}${eventId}`, String(sessionId));
-        await AsyncStorage.setItem(`${PROG_PREFIX}${eventId}`, "in_progress");
-        await AsyncStorage.setItem(`${PROG_SUB_PREFIX}${eventId}`, String(sessionId));
-
-        setInProgress((prev) => ({ ...prev, [eventId]: true }));
-
-        router.push({
-          pathname: "/(student)/activity-camera",
-          params: { sessionId: String(sessionId), eventId: String(eventId) },
-        });
-      } catch (err) {
-        Alert.alert("Error", safeJsonString(err));
+ const startSession = useCallback(
+  async (event: AdminEvent) => {
+    try {
+      const eventId = Number(event?.id);
+      if (!eventId) {
+        Alert.alert("Error", "Missing event_id. Please refresh and try again.");
+        return;
       }
-    },
-    [ensureLocation]
-  );
+
+      const status = deriveStatus(event);
+      if (status !== "ongoing") {
+        const when =
+          status === "upcoming"
+            ? "This activity is not active yet. Please start it on the event day/time."
+            : "This activity has already ended.";
+        Alert.alert("Not available", when);
+        return;
+      }
+
+      await ensureLocation();
+
+      // ✅ NEW FLOW: register returns submission_id
+      const res = await authFetch(`/student/events/${eventId}/register`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg =
+          typeof data?.detail === "string"
+            ? data.detail
+            : typeof data === "string"
+            ? data
+            : safeJsonString(data);
+        throw msg;
+      }
+
+      const submissionId = data?.submission_id ?? data?.id;
+      if (!submissionId) throw "Registered but submission_id missing in response";
+
+      // ✅ store submission_id (not session_id)
+      await AsyncStorage.setItem(`${SUBMISSION_PREFIX}${eventId}`, String(submissionId));
+      await AsyncStorage.setItem(`${PROG_PREFIX}${eventId}`, "in_progress");
+      await AsyncStorage.setItem(`${PROG_SUBMISSION_PREFIX}${eventId}`, String(submissionId));
+
+      setInProgress((prev) => ({ ...prev, [eventId]: true }));
+
+      // ✅ go to event camera screen (submission-based)
+      router.push({
+        pathname: "/(student)/activity-camera", // ✅ create this screen OR rename your camera screen
+        params: { submissionId: String(submissionId), eventId: String(eventId) },
+      });
+    } catch (err) {
+      Alert.alert("Error", safeJsonString(err));
+    }
+  },
+  [ensureLocation]
+);
 
   // ── Continue session ─────────────────────────────────────────
   const continueSession = useCallback(
-    async (event: AdminEvent) => {
-      try {
-        const eventId = Number(event.id);
+  async (event: AdminEvent) => {
+    try {
+      const eventId = Number(event.id);
 
-        const status = deriveStatus(event);
-        if (status !== "ongoing") {
-          await AsyncStorage.removeItem(`${SUB_PREFIX}${eventId}`);
-          await AsyncStorage.removeItem(`${PROG_PREFIX}${eventId}`);
-          await AsyncStorage.removeItem(`${PROG_SUB_PREFIX}${eventId}`);
+      const status = deriveStatus(event);
+      if (status !== "ongoing") {
+  // ✅ remove submission-based keys
+  await AsyncStorage.multiRemove([
+    `${SUBMISSION_PREFIX}${eventId}`,
+    `${PROG_SUBMISSION_PREFIX}${eventId}`,
+    `${PROG_PREFIX}${eventId}`,
+    `${SESSION_PREFIX}${eventId}`, // optional (safe cleanup)
+  ]);
 
-          Alert.alert("Not available", "This activity can only be continued during the event time.");
-          return;
-        }
-
-        const stored = await AsyncStorage.getItem(`${SUB_PREFIX}${eventId}`);
-        if (stored) {
-          router.push({
-            pathname: "/(student)/activity-camera",
-            params: { sessionId: String(stored), eventId: String(eventId) },
-          });
-          return;
-        }
-
-        await startSession(event);
-      } catch (e) {
-        Alert.alert("Error", safeJsonString(e));
-      }
-    },
-    [startSession]
+  Alert.alert(
+    "Not available",
+    "This activity can only be continued during the event time."
   );
+  return;
+}
+
+      const stored = await AsyncStorage.getItem(`${SUBMISSION_PREFIX}${eventId}`);
+
+      // ✅ stored is submissionId now
+      if (stored) {
+        router.push({
+          pathname: "/(student)/activity-camera",
+          params: { submissionId: String(stored), eventId: String(eventId) },
+        });
+        return;
+      }
+
+      await startSession(event);
+    } catch (e) {
+      Alert.alert("Error", safeJsonString(e));
+    }
+  },
+  [startSession]
+);
 
   const handleViewSubmission = useCallback((event: AdminEvent) => {
     router.push({
@@ -1185,22 +1221,22 @@ const fetchStats = useCallback(async () => {
   );
 
   // ── UI derived values ────────────────────────────────────────
-  const totalPts = stats.total_points ?? 0;
-  const nextMilestone = stats.next_milestone ?? 0;
+const totalPts = Number(me?.total_points_earned ?? stats.total_points ?? 0) || 0;
+const nextMilestone = Number(me?.required_total_points ?? stats.next_milestone ?? 0) || 0;
 
   const progress = useMemo(() => {
     if (!nextMilestone || nextMilestone <= 0) return 0;
     return Math.max(0, Math.min(1, totalPts / nextMilestone));
   }, [totalPts, nextMilestone]);
 
-  const filteredEvents = events.filter((e) => {
-    const s2 = deriveStatus(e);
-    return activeEventTab === "Upcoming"
-      ? s2 === "upcoming"
-      : activeEventTab === "Ongoing"
-      ? s2 === "ongoing"
-      : s2 === "past";
-  });
+ const filteredEvents = events.filter((e) => {
+  const s2 = deriveStatus(e);
+  return activeEventTab === "Upcoming"
+    ? s2 === "upcoming"
+    : activeEventTab === "Ongoing"
+    ? s2 === "ongoing"
+    : s2 === "past";
+});
 
   const countFor = (tab: EventTab) =>
     events.filter((e) => deriveStatus(e) === (tab === "Upcoming" ? "upcoming" : tab === "Ongoing" ? "ongoing" : "past"))

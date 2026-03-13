@@ -1,5 +1,6 @@
 // app/(student)/activity-camera.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import * as FileSystem from "expo-file-system/legacy";
 import {
   View,
   Text,
@@ -92,31 +93,21 @@ async function getToken(): Promise<string | null> {
     if (!t) return null;
     if (typeof t !== "string") t = String(t);
     let s = t.trim();
-
-    // remove wrapping quotes
     if (
       (s.startsWith('"') && s.endsWith('"')) ||
       (s.startsWith("'") && s.endsWith("'"))
     ) {
       s = s.slice(1, -1).trim();
     }
-
-    // avoid "Bearer Bearer ..."
     if (s.toLowerCase().startsWith("bearer ")) s = s.slice(7).trim();
-
-    // basic JWT shape check (optional)
     if (s.split(".").length >= 3) return s;
-
     return s.length > 20 ? s : null;
   };
 
-  // 1) direct keys
   for (const k of directKeys) {
     const raw = await AsyncStorage.getItem(k);
     const token = normalize(raw);
     if (token) return token;
-
-    // if raw is JSON string, parse and extract token
     if (raw && raw.trim().startsWith("{")) {
       try {
         const p = JSON.parse(raw);
@@ -127,7 +118,6 @@ async function getToken(): Promise<string | null> {
     }
   }
 
-  // 2) common container keys
   for (const k of ["user", "auth", "session", "userData", "student", "profile"]) {
     const raw = await AsyncStorage.getItem(k);
     if (!raw) continue;
@@ -142,7 +132,6 @@ async function getToken(): Promise<string | null> {
         p?.data?.token ??
         p?.user?.access_token ??
         p?.student?.access_token;
-
       const token = normalize(t);
       if (token) return token;
     } catch {}
@@ -183,14 +172,14 @@ async function getActiveStudentId(): Promise<string> {
 }
 
 // ─── Face verification helper ─────────────────────────────────
-async function verifyFaceForSession(sessionId: number, token?: string | null) {
+async function verifyFaceForSession(submissionId: number, token?: string | null) {
   const headers: Record<string, string> = { Accept: "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE_URL}/face/verify-session/${sessionId}`, {
-    method: "POST",
-    headers,
-  });
+  const res = await fetch(
+    `${BASE_URL}/face/verify-event-submission/${submissionId}`,
+    { method: "POST", headers }
+  );
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -210,7 +199,7 @@ async function verifyFaceForSession(sessionId: number, token?: string | null) {
   };
 }
 
-// ─── Geo helpers (optional) ───────────────────────────────────
+// ─── Geo helpers ──────────────────────────────────────────────
 function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371000;
   const toRad = (x: number) => (x * Math.PI) / 180;
@@ -249,7 +238,7 @@ export default function ActivityCameraScreen() {
     eventId: string;
     eventTitle: string;
     sessionId?: string;
-    submissionId?: string; // backward compatible
+    submissionId?: string;
   }>();
 
   const cameraRef = useRef<any>(null);
@@ -267,8 +256,8 @@ export default function ActivityCameraScreen() {
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
-  // Optional: if later you want to enforce within-radius submissions
   const [geo, setGeo] = useState<{
     maps_url?: string | null;
     target_lat?: number | null;
@@ -276,21 +265,16 @@ export default function ActivityCameraScreen() {
     radius_m?: number | null;
   } | null>(null);
 
-  // NEW: student namespace key
   const [studentKey, setStudentKey] = useState<string>("0");
+  const [createdSubmissionId, setCreatedSubmissionId] = useState<number | null>(null);
+  const [creatingSubmission, setCreatingSubmission] = useState(false);
 
-  // ✅ auto-create session if not passed
-  const [createdSessionId, setCreatedSessionId] = useState<number | null>(null);
-  const [creatingSession, setCreatingSession] = useState(false);
-
-  // Keep same behaviour for submissionId
-  const activeSessionId = useMemo(() => {
-    const raw = sessionId ?? submissionId;
+  const activeSubmissionId = useMemo(() => {
+    const raw = submissionId ?? sessionId;
     const n = raw ? parseInt(raw, 10) : NaN;
     return Number.isFinite(n) ? n : null;
-  }, [sessionId, submissionId]);
+  }, [submissionId, sessionId]);
 
-  // ── Camera facing logic ──────────────────────────────────────
   const currentFacing: "front" | "back" =
     photos.length < FRONT_CAM_COUNT ? "front" : "back";
   const isFrontPhase = photos.length < FRONT_CAM_COUNT;
@@ -299,10 +283,9 @@ export default function ActivityCameraScreen() {
   const totalRear = MAX_PHOTOS - FRONT_CAM_COUNT;
   const isLastFrontShot = photos.length === FRONT_CAM_COUNT - 1;
 
-  // ✅ IMPORTANT: stable subKey includes createdSessionId
   const subKey = useMemo(
-    () => String(activeSessionId ?? createdSessionId ?? sessionId ?? "0"),
-    [activeSessionId, createdSessionId, sessionId]
+    () => String(activeSubmissionId ?? createdSubmissionId ?? "0"),
+    [activeSubmissionId, createdSubmissionId]
   );
 
   const k = useMemo(() => {
@@ -321,20 +304,7 @@ export default function ActivityCameraScreen() {
   const PROG_SUB_KEY = useMemo(() => k(`prog_sub_${eventId}`), [k, eventId]);
   const DONE_KEY = useMemo(() => k(`done_${eventId}`), [k, eventId]);
 
-  // ── Ownership guard ──────────────────────────────────────────
-  async function sessionBelongsToMe(sessionIdNum: number, token: string | null) {
-    if (!token) return false;
-    try {
-      const res = await fetch(`${BASE_URL}/student/activity/sessions/${sessionIdNum}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      return res.ok;
-    } catch {
-      return false;
-    }
-  }
-
-  // Animations
+  // ─── Animations ───────────────────────────────────────────
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const gpsAnim = useRef(new Animated.Value(0)).current;
   const flashAnim = useRef(new Animated.Value(0)).current;
@@ -343,7 +313,7 @@ export default function ActivityCameraScreen() {
   const successOpacity = useRef(new Animated.Value(0)).current;
   const idleScale = useRef(new Animated.Value(1)).current;
 
-  // ── Helpers ─────────────────────────────────────────────────
+  // ─── Helpers ──────────────────────────────────────────────
   const readJsonSafe = async (res: Response) => {
     try {
       return await res.json();
@@ -352,74 +322,144 @@ export default function ActivityCameraScreen() {
     }
   };
 
-  // ✅ Ensure session exists. Returns session id.
-  const ensureSession = async (): Promise<number> => {
-    const existing = activeSessionId ?? createdSessionId;
+  const fetchEventDraft = async (eid: number, token: string) => {
+    const res = await fetch(`${BASE_URL}/student/events/${eid}/draft`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    const data = await readJsonSafe(res);
+    if (!res.ok) {
+      const d = data?.detail;
+      throw new Error(
+        typeof d === "string" ? d : JSON.stringify(d) || `Draft fetch failed (${res.status})`
+      );
+    }
+    return data;
+  };
+
+  const ensureSubmission = async (): Promise<number> => {
+    const existing = activeSubmissionId ?? createdSubmissionId;
     if (existing) return existing;
 
-    if (creatingSession) {
+    if (creatingSubmission) {
       await new Promise((r) => setTimeout(r, 250));
-      const again = activeSessionId ?? createdSessionId;
+      const again = activeSubmissionId ?? createdSubmissionId;
       if (again) return again;
     }
 
-    setCreatingSession(true);
+    setCreatingSubmission(true);
     try {
       const token = await getToken();
       if (!token) throw new Error("Please login again.");
 
-      const activityTypeId = Number(eventId);
-      if (!Number.isFinite(activityTypeId)) {
-        throw new Error("Invalid activity id. Please go back and start activity again.");
+      const eid = Number(eventId);
+      if (!Number.isFinite(eid)) {
+        throw new Error("Invalid event id. Please go back and start again.");
       }
 
-      const res = await fetch(`${BASE_URL}/student/activity/sessions`, {
+      const draftData = await fetchEventDraft(eid, token).catch(() => null);
+      if (draftData?.exists && draftData?.submission_id) {
+        const sidNum = Number(draftData.submission_id);
+        setCreatedSubmissionId(sidNum);
+        return sidNum;
+      }
+
+      const regRes = await fetch(`${BASE_URL}/student/events/${eid}/register`, {
         method: "POST",
         headers: {
           Accept: "application/json",
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          activity_type_id: activityTypeId,
-          activity_name: String(eventTitle ?? "Activity"),
-          description: null,
-        }),
       });
 
-      const data = await readJsonSafe(res);
+      const regData = await readJsonSafe(regRes);
 
-      if (!res.ok) {
-        const d = data?.detail;
+      if (!regRes.ok) {
+        const d = regData?.detail;
         throw new Error(
           typeof d === "string"
             ? d
-            : JSON.stringify(d) || `Create session failed (${res.status})`
+            : JSON.stringify(d) || `Create submission failed (${regRes.status})`
         );
       }
 
-      const sid = data?.session_id ?? data?.id ?? data?.session?.id;
-      if (!sid) throw new Error("Session created but id missing in response.");
+      const sid = regData?.submission_id;
+      if (!sid) throw new Error("Submission created but id missing in response.");
 
       const sidNum = Number(sid);
-      setCreatedSessionId(sidNum);
+      setCreatedSubmissionId(sidNum);
       return sidNum;
     } finally {
-      setCreatingSession(false);
+      setCreatingSubmission(false);
     }
   };
 
-  // ── Init ────────────────────────────────────────────────────
+  // ─── FIXED: Photo Upload using FileSystem.uploadAsync ─────
+  const uploadCapturedPhotoImmediately = async (
+    submissionId: number,
+    photo: CapturedPhoto,
+    seqNo: number
+  ) => {
+    const token = await getToken();
+    if (!token) throw new Error("Login required");
+
+    const url = `${BASE_URL}/student/events/submissions/${submissionId}/photos?start_seq=${seqNo}`;
+
+    console.log("UPLOAD URL =", url);
+    console.log("PHOTO URI =", photo.uri);
+    console.log("LAT =", photo.latitude);
+    console.log("LNG =", photo.longitude);
+
+    // FileSystem.uploadAsync is the only reliable way to upload
+    // file:// URIs on Android in Expo Go
+    const uploadResult = await FileSystem.uploadAsync(url, photo.uri, {
+      httpMethod: "POST",
+      uploadType: FileSystem.FileSystemUploadType?.MULTIPART,
+      fieldName: "photo",
+      mimeType: "image/jpeg",
+      parameters: {
+        lat: String(photo.latitude ?? 0),
+        lng: String(photo.longitude ?? 0),
+      },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+      },
+    });
+
+    console.log("UPLOAD STATUS =", uploadResult.status);
+    console.log("UPLOAD RAW =", uploadResult.body);
+
+    let data: any = {};
+    try {
+      data = uploadResult.body ? JSON.parse(uploadResult.body) : {};
+    } catch {
+      data = { raw: uploadResult.body };
+    }
+
+    if (uploadResult.status < 200 || uploadResult.status >= 300) {
+      throw new Error(
+        typeof data?.detail === "string"
+          ? data.detail
+          : JSON.stringify(data?.detail || data)
+      );
+    }
+
+    return data;
+  };
+
+  // ─── Effects ──────────────────────────────────────────────
   useEffect(() => {
     Animated.timing(headerAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
-
     ScreenOrientation.unlockAsync().catch(() => {});
     requestPermission();
 
     let sub: Location.LocationSubscription | undefined;
 
     (async () => {
-      // set student namespace early
       const sid = await getActiveStudentId();
       setStudentKey(sid);
 
@@ -439,11 +479,10 @@ export default function ActivityCameraScreen() {
         setGpsReady(false);
       }
 
-      // ✅ auto create session if not passed
       try {
-        await ensureSession();
+        await ensureSubmission();
       } catch (e: any) {
-        setSubmitError(e?.message ?? "Session not created. Please go back and start activity again.");
+        setSubmitError(e?.message ?? "Submission not created. Please go back and start again.");
       }
     })();
 
@@ -454,53 +493,50 @@ export default function ActivityCameraScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Restore draft (per-student + ownership check) ────────────
   useEffect(() => {
     if (!studentKey) return;
 
     (async () => {
       try {
         const token = await getToken();
-        const subId =
-          activeSessionId ??
-          createdSessionId ??
-          (sessionId ? parseInt(sessionId, 10) : null);
+        if (!token) return;
 
-        if (subId && !Number.isNaN(subId)) {
-          const ok = await sessionBelongsToMe(subId, token);
-          if (!ok) {
-            await AsyncStorage.multiRemove([DRAFT_PHOTOS_KEY, DRAFT_DESC_KEY, PROG_KEY, PROG_SUB_KEY]);
-            setPhotos([]);
-            setDescription("");
-            return;
-          }
+        const eid = Number(eventId);
+        if (!Number.isFinite(eid)) return;
+
+        const data = await fetchEventDraft(eid, token);
+
+        if (data?.submission_id) {
+          setCreatedSubmissionId(Number(data.submission_id));
         }
+
+        const rawDesc = await AsyncStorage.getItem(DRAFT_DESC_KEY);
+        if (rawDesc) setDescription(rawDesc);
 
         const rawPhotos = await AsyncStorage.getItem(DRAFT_PHOTOS_KEY);
-        const rawDesc = await AsyncStorage.getItem(DRAFT_DESC_KEY);
+        const savedPhotos: CapturedPhoto[] = rawPhotos ? JSON.parse(rawPhotos) : [];
 
-        if (rawPhotos) {
-          const saved = JSON.parse(rawPhotos) as CapturedPhoto[];
-          if (Array.isArray(saved) && saved.length > 0) {
-            setPhotos(saved);
-            if (saved.length >= MAX_PHOTOS) setMode("description");
+        const uploadedSeqNos: number[] = Array.isArray(data?.uploaded_seq_nos)
+          ? data.uploaded_seq_nos
+              .map((x: any) => Number(x))
+              .filter((n: number) => Number.isFinite(n))
+          : [];
+
+        if (savedPhotos.length > 0 && uploadedSeqNos.length > 0) {
+          const restored = savedPhotos.filter((_, idx) => uploadedSeqNos.includes(idx + 1));
+          setPhotos(restored);
+          if (uploadedSeqNos.length >= MAX_PHOTOS) {
+            setMode("description");
           }
+        } else {
+          setPhotos([]);
         }
-        if (rawDesc) setDescription(rawDesc);
-      } catch {}
+      } catch (e) {
+        console.log("draft restore failed", e);
+      }
     })();
-  }, [
-    studentKey,
-    DRAFT_PHOTOS_KEY,
-    DRAFT_DESC_KEY,
-    PROG_KEY,
-    PROG_SUB_KEY,
-    activeSessionId,
-    createdSessionId,
-    sessionId,
-  ]);
+  }, [studentKey, eventId, DRAFT_PHOTOS_KEY, DRAFT_DESC_KEY]);
 
-  // ── GPS animations ───────────────────────────────────────────
   useEffect(() => {
     if (gpsReady) {
       Animated.loop(
@@ -519,7 +555,6 @@ export default function ActivityCameraScreen() {
     }
   }, [gpsReady, gpsAnim, pulseAnim]);
 
-  // ── Success animation ────────────────────────────────────────
   useEffect(() => {
     if (mode === "confirmation") {
       Animated.parallel([
@@ -529,7 +564,7 @@ export default function ActivityCameraScreen() {
     }
   }, [mode, successScale, successOpacity]);
 
-  // ── GPS helpers ──────────────────────────────────────────────
+  // ─── GPS helpers ──────────────────────────────────────────
   const gpsStrength = () => {
     if (!gpsAccuracy) return "Acquiring";
     if (gpsAccuracy < 10) return "Excellent";
@@ -546,9 +581,10 @@ export default function ActivityCameraScreen() {
     return "#EF4444";
   };
 
-  // ── Capture ──────────────────────────────────────────────────
+  // ─── Capture ──────────────────────────────────────────────
   const capturePhoto = async () => {
     if (!cameraRef.current) return;
+    if (uploadingPhoto) return;
 
     if (locGranted && !location) {
       Alert.alert("GPS Required", "Waiting for GPS signal.");
@@ -563,7 +599,15 @@ export default function ActivityCameraScreen() {
     ]).start();
 
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.85, base64: false });
+      setUploadingPhoto(true);
+
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.85,
+        base64: false,
+        skipProcessing: false,
+      });
+
+      await new Promise((r) => setTimeout(r, 400));
 
       const newPhoto: CapturedPhoto = {
         uri: photo.uri,
@@ -573,22 +617,29 @@ export default function ActivityCameraScreen() {
         timestamp: new Date().toISOString(),
       };
 
+      const nextSeqNo = photos.length + 1;
+      const subId = await ensureSubmission();
+
       const updated = [...photos, newPhoto];
       setPhotos(updated);
 
       await AsyncStorage.setItem(DRAFT_PHOTOS_KEY, JSON.stringify(updated));
+      await AsyncStorage.setItem(DRAFT_DESC_KEY, description || "");
       await AsyncStorage.setItem(PROG_KEY, "in_progress");
-      await AsyncStorage.setItem(PROG_SUB_KEY, subKey);
+      await AsyncStorage.setItem(PROG_SUB_KEY, String(subId));
+
+      await uploadCapturedPhotoImmediately(subId, newPhoto, nextSeqNo);
 
       if (updated.length === MAX_PHOTOS) {
         setTimeout(() => setMode("description"), 600);
       }
-    } catch {
-      Alert.alert("Error", "Failed to capture. Please try again.");
+    } catch (e: any) {
+      Alert.alert("Upload Failed", e?.message || "Failed to capture/upload photo.");
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
-  // ── Delete photo ─────────────────────────────────────────────
   const deletePhoto = (index: number) => {
     setPhotos((prev) => {
       const updated = prev.filter((_, i) => i !== index);
@@ -597,62 +648,7 @@ export default function ActivityCameraScreen() {
     });
   };
 
-  // ── Submit helpers (robust endpoint detection) ───────────────
-  const isRouteMissing404 = (data: any) => data?.detail === "Not Found";
-
-  const firstWorkingUploadEndpoint = async (
-    sessionOrSubmissionId: number,
-    headers: Record<string, string>,
-    fd: FormData,
-    metaCapturedAt: string,
-    lat: string,
-    lng: string,
-    seqNo: number
-  ) => {
-    const baseQs = `meta_captured_at=${encodeURIComponent(metaCapturedAt)}&lat=${encodeURIComponent(
-      lat
-    )}&lng=${encodeURIComponent(lng)}`;
-
-    const candidates = [
-      // sessions (plural) uses seq_no
-      `${BASE_URL}/student/activity/sessions/${sessionOrSubmissionId}/photos?${baseQs}&seq_no=${seqNo}`,
-      `${BASE_URL}/student/activity/sessions/${sessionOrSubmissionId}/photos/?${baseQs}&seq_no=${seqNo}`,
-
-      // legacy variants
-      `${BASE_URL}/student/activity/session/${sessionOrSubmissionId}/photos?${baseQs}&seq_no=${seqNo}`,
-      `${BASE_URL}/student/activity/session/${sessionOrSubmissionId}/photos/?${baseQs}&seq_no=${seqNo}`,
-
-      `${BASE_URL}/student/activity/submissions/${sessionOrSubmissionId}/photos/upload?${baseQs}&start_seq=${seqNo}`,
-      `${BASE_URL}/student/activity/submissions/${sessionOrSubmissionId}/photos/upload/?${baseQs}&start_seq=${seqNo}`,
-
-      `${BASE_URL}/student/activity/submissions/${sessionOrSubmissionId}/photos?${baseQs}&start_seq=${seqNo}`,
-      `${BASE_URL}/student/activity/submissions/${sessionOrSubmissionId}/photos/?${baseQs}&start_seq=${seqNo}`,
-
-      `${BASE_URL}/student/submissions/${sessionOrSubmissionId}/photos?${baseQs}&start_seq=${seqNo}`,
-      `${BASE_URL}/student/submissions/${sessionOrSubmissionId}/photos/?${baseQs}&start_seq=${seqNo}`,
-    ];
-
-    for (const url of candidates) {
-      const res = await fetch(url, {
-        method: "POST",
-        headers, // DO NOT set Content-Type manually for FormData
-        body: fd,
-      });
-
-      const data = await readJsonSafe(res);
-
-      if (res.status === 404) {
-        if (isRouteMissing404(data)) continue;
-        return { url, res, data };
-      }
-
-      return { url, res, data };
-    }
-
-    throw new Error(`Upload endpoint not found (404). Tried: ${candidates.join(" | ")}`);
-  };
-
-  // ✅ Submit (uses ensureSession) — UPDATED SUBMIT BLOCK + CLEANUP
+  // ─── Submit ───────────────────────────────────────────────
  const handleSubmit = async () => {
   setSubmitting(true);
   setSubmitError(null);
@@ -660,15 +656,13 @@ export default function ActivityCameraScreen() {
 
   try {
     const token = await getToken();
-    const headers: Record<string, string> = { Accept: "application/json" };
-    if (token) headers.Authorization = `Bearer ${token}`;
+    if (!token) throw new Error("Please login again.");
 
-    const subId = await ensureSession();
+    const subId = await ensureSubmission();
     if (!subId || Number.isNaN(subId)) {
-      throw new Error("Session not created. Please go back and start activity again.");
+      throw new Error("Submission not created. Please go back and start again.");
     }
 
-    // (optional) geo fence check if you later set geo.target_lat/lng
     if (
       geo?.target_lat != null &&
       geo?.target_lng != null &&
@@ -686,115 +680,51 @@ export default function ActivityCameraScreen() {
       }
     }
 
-    if (photos.length === 0) throw new Error("Please capture at least 1 photo.");
-
-    // 1) Upload photos
-    for (let i = 0; i < photos.length; i++) {
-      const p = photos[i];
-
-      const fd = new FormData();
-      fd.append(
-        "image",
-        { uri: p.uri, name: `photo_${i + 1}.jpg`, type: "image/jpeg" } as any
-      );
-
-      const capturedAt = p.timestamp || new Date().toISOString();
-      const lat = String(p.latitude ?? 0);
-      const lng = String(p.longitude ?? 0);
-
-      const attempt = await firstWorkingUploadEndpoint(
-        subId,
-        headers,
-        fd,
-        capturedAt,
-        lat,
-        lng,
-        i + 1
-      );
-
-      if (!attempt.res.ok) {
-        const detail = attempt.data?.detail;
-
-        if (attempt.res.status === 401) throw new Error("Session expired. Please login again.");
-        if (attempt.res.status === 403) {
-          throw new Error("This session does not belong to the current student. Please reopen the activity.");
-        }
-
-        if (Array.isArray(detail)) {
-          const msg = detail.map((e: any) => e?.msg || JSON.stringify(e)).join(", ");
-          throw new Error(msg || `Upload failed (${attempt.res.status})`);
-        }
-
-        throw new Error(
-          (typeof detail === "string" ? detail : JSON.stringify(detail)) ||
-            `Upload failed (${attempt.res.status})`
-        );
-      }
+    if (photos.length === 0) {
+      throw new Error("Please capture at least 1 photo.");
     }
 
-    // 2) Face verify
-    const face = await verifyFaceForSession(subId, token);
-    if (!face?.matched) {
-      setSubmitError(`Face verification failed: ${face?.reason || "Face mismatch"}`);
-      setMode("description");
-      return;
-    }
+    // ✅ Submit directly — backend now runs face verification automatically
+    const submitRes = await fetch(`${BASE_URL}/student/submissions/${subId}/submit`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        description: description?.trim() || "",
+      }),
+    });
 
-    // 3) Submit session (single correct endpoint)
-    const submitUrl = `${BASE_URL}/student/activity/sessions/${subId}/submit`;
-
-    let submitRes: Response;
-    try {
-      submitRes = await fetch(submitUrl, {
-        method: "POST",
-        headers, // only Accept + Authorization
-      });
-    } catch (e: any) {
-      throw new Error(`Network request failed (submit): ${e?.message || String(e)}`);
-    }
-
-    const submitText = await submitRes.text();
-    let submitJson: any = null;
-    try {
-      submitJson = submitText ? JSON.parse(submitText) : null;
-    } catch {
-      // keep submitText as-is
-    }
+    const submitJson = await readJsonSafe(submitRes);
 
     if (!submitRes.ok) {
-      const d = submitJson?.detail ?? submitText;
-
-      if (submitRes.status === 401) throw new Error("Session expired. Please login again.");
-      if (submitRes.status === 403) {
-        throw new Error("This session does not belong to the current student. Please reopen the activity.");
-      }
-
-      throw new Error(
-        (typeof d === "string" ? d : JSON.stringify(d)) ||
-          `Submit failed (${submitRes.status})`
-      );
+      const d = submitJson?.detail ?? "Submit failed";
+      throw new Error(typeof d === "string" ? d : JSON.stringify(d));
     }
 
-    // 4) Cleanup + mark status for History (✅ IMPORTANT)
-    // clear drafts
-    await AsyncStorage.multiRemove([DRAFT_PHOTOS_KEY, DRAFT_DESC_KEY, PROG_KEY, PROG_SUB_KEY]);
+    // ✅ Check if backend auto-approved (face matched) or pending review
+    const submissionStatus = submitJson?.status ?? "submitted";
+    const faceMatched = submissionStatus === "approved";
 
-    // ✅ ensure we know the student id at submit-time (avoid "0")
+    // Clear all draft state
+    await AsyncStorage.multiRemove([
+      DRAFT_PHOTOS_KEY,
+      DRAFT_DESC_KEY,
+      PROG_KEY,
+      PROG_SUB_KEY,
+    ]);
+
     const sidRaw = await AsyncStorage.getItem("active_student_id");
     const sid =
       (sidRaw && sidRaw !== "0" ? sidRaw : null) ||
       (studentKey && studentKey !== "0" ? String(studentKey) : "0");
 
-    // ✅ mark done/submitted in BOTH namespaces
-    // a) namespaced (new)
     await AsyncStorage.setItem(`stu_${sid}_done_${eventId}`, "done");
-    await AsyncStorage.setItem(`stu_${sid}_reg_${eventId}`, "submitted");
-
-    // b) non-namespaced (History currently reads these)
+    await AsyncStorage.setItem(`stu_${sid}_reg_${eventId}`, faceMatched ? "approved" : "submitted");
     await AsyncStorage.setItem(`done_${eventId}`, "done");
-    await AsyncStorage.setItem(`reg_${eventId}`, "submitted");
-
-    // keep your existing DONE_KEY too (safe)
+    await AsyncStorage.setItem(`reg_${eventId}`, faceMatched ? "approved" : "submitted");
     await AsyncStorage.setItem(DONE_KEY, "done");
 
     setMode("confirmation");
@@ -806,10 +736,7 @@ export default function ActivityCameraScreen() {
   }
 };
 
-  // ─────────────────────────────────────────────────────────────
-  // UI (KEEP STYLING AS YOU POSTED)
-  // ─────────────────────────────────────────────────────────────
-
+  // ─── Permission screen ────────────────────────────────────
   if (!permission || !permission.granted) {
     return (
       <View style={s.safe}>
@@ -836,18 +763,26 @@ export default function ActivityCameraScreen() {
     );
   }
 
+  // ─── Confirmation screen ──────────────────────────────────
   if (mode === "confirmation") {
     return (
       <SafeAreaView style={[s.safe, { backgroundColor: C.navy }]}>
         <StatusBar barStyle="light-content" backgroundColor={C.navy} />
         <ScrollView contentContainerStyle={cf.container} showsVerticalScrollIndicator={false}>
-          <Animated.View style={[cf.circle, { transform: [{ scale: successScale }], opacity: successOpacity }]}>
+          <Animated.View
+            style={[
+              cf.circle,
+              { transform: [{ scale: successScale }], opacity: successOpacity },
+            ]}
+          >
             <CheckCircle size={64} color={C.success} strokeWidth={1.5} />
           </Animated.View>
 
           <Animated.View style={{ opacity: successOpacity, alignItems: "center" }}>
             <Text style={cf.headline}>Activity Submitted</Text>
-            <Text style={cf.subText}>Your activity is now under approval. You will be notified soon.</Text>
+            <Text style={cf.subText}>
+              Your activity is now under approval. You will be notified soon.
+            </Text>
 
             <View style={cf.card}>
               <View style={cf.cardHeader}>
@@ -881,7 +816,6 @@ export default function ActivityCameraScreen() {
                   <Ionicons name="location" size={14} color={C.navy} />
                   <Text style={cf.mapCardTitle}>Submission Location</Text>
                 </View>
-
                 <MapView
                   style={cf.mapSnapshot}
                   initialRegion={{
@@ -900,7 +834,6 @@ export default function ActivityCameraScreen() {
                       <View style={cf.markerInner} />
                     </View>
                   </Marker>
-
                   <Circle
                     center={{ latitude: location.latitude, longitude: location.longitude }}
                     radius={gpsAccuracy ?? 20}
@@ -909,7 +842,6 @@ export default function ActivityCameraScreen() {
                     strokeWidth={1.5}
                   />
                 </MapView>
-
                 <View style={cf.mapCoords}>
                   <Ionicons name="navigate-outline" size={11} color={C.muted} />
                   <Text style={cf.mapCoordsText}>
@@ -925,9 +857,14 @@ export default function ActivityCameraScreen() {
               <Text style={cf.statusText}>Under Faculty Review</Text>
             </View>
 
-            <Text style={cf.footNote}>You will receive a notification once your activity has been reviewed.</Text>
+            <Text style={cf.footNote}>
+              You will receive a notification once your activity has been reviewed.
+            </Text>
 
-            <TouchableOpacity style={cf.homeBtn} onPress={() => router.replace("/(student)/dashboard")}>
+            <TouchableOpacity
+              style={cf.homeBtn}
+              onPress={() => router.replace("/(student)/dashboard")}
+            >
               <Text style={cf.homeBtnText}>Back to Home</Text>
               <ChevronRight size={18} color={C.navy} strokeWidth={2.5} />
             </TouchableOpacity>
@@ -937,9 +874,15 @@ export default function ActivityCameraScreen() {
     );
   }
 
+  // ─── Submitting screen ────────────────────────────────────
   if (mode === "submitting") {
     return (
-      <View style={[s.safe, { justifyContent: "center", alignItems: "center", backgroundColor: C.navy }]}>
+      <View
+        style={[
+          s.safe,
+          { justifyContent: "center", alignItems: "center", backgroundColor: C.navy },
+        ]}
+      >
         <StatusBar barStyle="light-content" backgroundColor={C.navy} />
         <View style={sub.box}>
           <View style={sub.spinner}>
@@ -970,6 +913,7 @@ export default function ActivityCameraScreen() {
     );
   }
 
+  // ─── Map screen ───────────────────────────────────────────
   if (mode === "map") {
     return (
       <View style={{ flex: 1, backgroundColor: "#000" }}>
@@ -1069,7 +1013,11 @@ export default function ActivityCameraScreen() {
                 </View>
               )}
 
-              <TouchableOpacity style={ms.backToCameraBtn} onPress={() => setMode("camera")} activeOpacity={0.85}>
+              <TouchableOpacity
+                style={ms.backToCameraBtn}
+                onPress={() => setMode("camera")}
+                activeOpacity={0.85}
+              >
                 <Camera size={16} color={C.white} strokeWidth={2.5} />
                 <Text style={ms.backToCameraBtnText}>Back to Camera</Text>
               </TouchableOpacity>
@@ -1080,6 +1028,7 @@ export default function ActivityCameraScreen() {
     );
   }
 
+  // ─── Description screen ───────────────────────────────────
   if (mode === "description") {
     return (
       <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]}>
@@ -1099,7 +1048,10 @@ export default function ActivityCameraScreen() {
           </View>
         </View>
 
-        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+          showsVerticalScrollIndicator={false}
+        >
           <Text style={ds.sectionLabel}>Captured Photos</Text>
 
           <ScrollView
@@ -1112,7 +1064,9 @@ export default function ActivityCameraScreen() {
               <View key={i} style={ds.thumbWrap}>
                 <Image source={{ uri: p.uri }} style={ds.thumb} resizeMode="cover" />
                 <View style={ds.thumbOverlay}>
-                  <Text style={ds.thumbOverlayText}>{i < FRONT_CAM_COUNT ? "Selfie" : "Scene"}</Text>
+                  <Text style={ds.thumbOverlayText}>
+                    {i < FRONT_CAM_COUNT ? "Selfie" : "Scene"}
+                  </Text>
                 </View>
                 <TouchableOpacity style={ds.thumbDelete} onPress={() => deletePhoto(i)}>
                   <X size={11} color={C.white} strokeWidth={3} />
@@ -1155,7 +1109,9 @@ export default function ActivityCameraScreen() {
                 pitchEnabled={false}
                 rotateEnabled={false}
               >
-                <Marker coordinate={{ latitude: location.latitude, longitude: location.longitude }}>
+                <Marker
+                  coordinate={{ latitude: location.latitude, longitude: location.longitude }}
+                >
                   <View style={ds.markerDot}>
                     <View style={ds.markerInner} />
                   </View>
@@ -1176,7 +1132,9 @@ export default function ActivityCameraScreen() {
                     anchor={{ x: 0.5, y: 0.5 }}
                   >
                     <View style={ds.miniPhotoMarker}>
-                      <Text style={{ fontSize: 8, fontWeight: "800", color: C.white }}>{i + 1}</Text>
+                      <Text style={{ fontSize: 8, fontWeight: "800", color: C.white }}>
+                        {i + 1}
+                      </Text>
                     </View>
                   </Marker>
                 ))}
@@ -1193,7 +1151,8 @@ export default function ActivityCameraScreen() {
           )}
 
           <Text style={ds.sectionLabel}>
-            Description <Text style={{ color: C.muted, fontWeight: "400" }}>(Optional)</Text>
+            Description{" "}
+            <Text style={{ color: C.muted, fontWeight: "400" }}>(Optional)</Text>
           </Text>
 
           <TextInput
@@ -1220,7 +1179,8 @@ export default function ActivityCameraScreen() {
 
           <View style={ds.infoBox}>
             <Text style={ds.infoText}>
-              Your submission will be reviewed by the faculty coordinator. You will be notified once approved and points are credited.
+              Your submission will be reviewed by the faculty coordinator. You will be notified
+              once approved and points are credited.
             </Text>
           </View>
 
@@ -1238,6 +1198,7 @@ export default function ActivityCameraScreen() {
     );
   }
 
+  // ─── Camera screen ────────────────────────────────────────
   const photoCount = photos.length;
   const allDone = photoCount >= MAX_PHOTOS;
 
@@ -1265,7 +1226,11 @@ export default function ActivityCameraScreen() {
             <Text style={s.camSub}>GPS-stamped proof photos</Text>
           </View>
 
-          <TouchableOpacity style={s.mapHeaderBtn} onPress={() => setMode("map")} disabled={!locGranted}>
+          <TouchableOpacity
+            style={s.mapHeaderBtn}
+            onPress={() => setMode("map")}
+            disabled={!locGranted}
+          >
             <Map size={16} color={locGranted ? C.gold : C.muted} strokeWidth={2} />
             <Text style={[s.mapHeaderBtnText, !locGranted && { color: C.muted }]}>Map</Text>
           </TouchableOpacity>
@@ -1306,8 +1271,18 @@ export default function ActivityCameraScreen() {
                 s.gpsDot,
                 {
                   backgroundColor: gpsColor(),
-                  opacity: gpsAnim.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }),
-                  transform: [{ scale: gpsAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 1.3] }) }],
+                  opacity: gpsAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.4, 1],
+                  }),
+                  transform: [
+                    {
+                      scale: gpsAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [1, 1.3],
+                      }),
+                    },
+                  ],
                 },
               ]}
             />
@@ -1343,14 +1318,20 @@ export default function ActivityCameraScreen() {
         {!locGranted && (
           <BlurView intensity={80} tint="dark" style={s.locDeniedBar}>
             <Ionicons name="warning-outline" size={13} color={C.gold} />
-            <Text style={s.locDeniedText}>Location denied — photos may not be GPS-stamped</Text>
+            <Text style={s.locDeniedText}>
+              Location denied — photos may not be GPS-stamped
+            </Text>
           </BlurView>
         )}
 
-        {creatingSession && (
-          <BlurView intensity={80} tint="dark" style={[s.locDeniedBar, { borderColor: "rgba(16,185,129,0.35)" }]}>
+        {creatingSubmission && (
+          <BlurView
+            intensity={80}
+            tint="dark"
+            style={[s.locDeniedBar, { borderColor: "rgba(16,185,129,0.35)" }]}
+          >
             <Ionicons name="time-outline" size={13} color={C.gold} />
-            <Text style={s.locDeniedText}>Creating session…</Text>
+            <Text style={s.locDeniedText}>Creating submission…</Text>
           </BlurView>
         )}
       </View>
@@ -1368,7 +1349,9 @@ export default function ActivityCameraScreen() {
       <View style={s.progressStrip}>
         <BlurView intensity={75} tint="dark" style={s.progressBlur}>
           <Text style={s.progressLabel}>
-            {allDone ? `All ${MAX_PHOTOS} photos captured` : `Photo ${photoCount + 1} of ${MAX_PHOTOS}`}
+            {allDone
+              ? `All ${MAX_PHOTOS} photos captured`
+              : `Photo ${photoCount + 1} of ${MAX_PHOTOS}`}
           </Text>
           <PhotoDots total={MAX_PHOTOS} filled={photoCount} />
 
@@ -1391,7 +1374,11 @@ export default function ActivityCameraScreen() {
           )}
 
           {allDone && (
-            <TouchableOpacity style={s.continueBtn} onPress={() => setMode("description")} activeOpacity={0.85}>
+            <TouchableOpacity
+              style={s.continueBtn}
+              onPress={() => setMode("description")}
+              activeOpacity={0.85}
+            >
               <Text style={s.continueBtnText}>Add Description & Submit</Text>
               <ChevronRight size={16} color={C.white} strokeWidth={2.5} />
             </TouchableOpacity>
@@ -1401,15 +1388,29 @@ export default function ActivityCameraScreen() {
 
       {!allDone && (
         <View style={s.bottomBar}>
-          <Animated.View style={[s.captureOuter, { transform: [{ scale: gpsReady ? pulseAnim : idleScale }] }]}>
+          <Animated.View
+            style={[
+              s.captureOuter,
+              { transform: [{ scale: gpsReady ? pulseAnim : idleScale }] },
+            ]}
+          >
             <TouchableOpacity
               style={s.captureInner}
               onPress={capturePhoto}
-              disabled={locGranted ? !gpsReady : false}
+              disabled={locGranted ? !gpsReady || uploadingPhoto : uploadingPhoto}
               activeOpacity={0.9}
             >
-              <View style={[s.captureCore, locGranted && !gpsReady && s.captureCoreDisabled]}>
-                <Camera size={28} color={locGranted && !gpsReady ? C.muted : C.navy} strokeWidth={2} />
+              <View
+                style={[
+                  s.captureCore,
+                  locGranted && !gpsReady && s.captureCoreDisabled,
+                ]}
+              >
+                <Camera
+                  size={28}
+                  color={locGranted && !gpsReady ? C.muted : C.navy}
+                  strokeWidth={2}
+                />
               </View>
             </TouchableOpacity>
           </Animated.View>
@@ -1433,7 +1434,7 @@ export default function ActivityCameraScreen() {
   );
 }
 
-// ─── Styles (UNCHANGED — your styling) ─────────────────────────
+// ─── Styles ───────────────────────────────────────────────────
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   cameraContainer: { flex: 1, backgroundColor: "#000" },
@@ -1535,7 +1536,6 @@ const s = StyleSheet.create({
     borderColor: "rgba(201,149,42,0.4)",
   },
   aicteBadgeText: { color: C.gold, fontSize: 10, fontWeight: "700", letterSpacing: 1 },
-
   mapHeaderBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1549,7 +1549,13 @@ const s = StyleSheet.create({
   },
   mapHeaderBtnText: { color: C.gold, fontSize: 11, fontWeight: "700" },
 
-  camSwitchBanner: { position: "absolute", top: Platform.OS === "ios" ? 104 : 92, left: 16, right: 16, zIndex: 10 },
+  camSwitchBanner: {
+    position: "absolute",
+    top: Platform.OS === "ios" ? 104 : 92,
+    left: 16,
+    right: 16,
+    zIndex: 10,
+  },
   camSwitchBlur: {
     borderRadius: 12,
     overflow: "hidden",
@@ -1575,7 +1581,13 @@ const s = StyleSheet.create({
   camSwitchPillActive: { backgroundColor: "rgba(22,163,74,0.25)", borderColor: C.success },
   camSwitchPillText: { fontSize: 9, fontWeight: "800", color: C.gold, letterSpacing: 0.8 },
 
-  gpsBar: { position: "absolute", top: Platform.OS === "ios" ? 168 : 156, left: 16, right: 16, gap: 8 },
+  gpsBar: {
+    position: "absolute",
+    top: Platform.OS === "ios" ? 168 : 156,
+    left: 16,
+    right: 16,
+    gap: 8,
+  },
   gpsBlur: {
     borderRadius: 14,
     overflow: "hidden",
@@ -1583,7 +1595,13 @@ const s = StyleSheet.create({
     borderColor: "rgba(16,185,129,0.3)",
     backgroundColor: "rgba(0,0,0,0.45)",
   },
-  gpsContent: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10, gap: 12 },
+  gpsContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 12,
+  },
   gpsDot: { width: 11, height: 11, borderRadius: 5.5 },
   gpsLabel: { fontSize: 9, fontWeight: "700", color: "#10B981", letterSpacing: 1.2, marginBottom: 1 },
   gpsValue: { fontSize: 13, fontWeight: "600", color: C.white },
@@ -1608,7 +1626,13 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  coordsBarText: { fontSize: 11, fontWeight: "600", color: C.white, fontFamily: "monospace", flex: 1 },
+  coordsBarText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: C.white,
+    fontFamily: "monospace",
+    flex: 1,
+  },
   miniMapBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1653,7 +1677,13 @@ const s = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.1)",
     gap: 8,
   },
-  progressLabel: { color: C.white, fontSize: 12, fontWeight: "700", textAlign: "center", marginBottom: 4 },
+  progressLabel: {
+    color: C.white,
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
+    marginBottom: 4,
+  },
   miniThumbWrap: { position: "relative" },
   miniThumb: { width: 50, height: 50, borderRadius: 10, borderWidth: 2, borderColor: C.gold },
   miniThumbBadge: {
@@ -1682,7 +1712,15 @@ const s = StyleSheet.create({
   },
   continueBtnText: { color: C.white, fontSize: 14, fontWeight: "800" },
 
-  bottomBar: { position: "absolute", bottom: 0, left: 0, right: 0, alignItems: "center", paddingBottom: 44, gap: 10 },
+  bottomBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    paddingBottom: 44,
+    gap: 10,
+  },
   captureOuter: {
     width: 84,
     height: 84,
@@ -1698,8 +1736,21 @@ const s = StyleSheet.create({
     shadowRadius: 10,
     elevation: 10,
   },
-  captureInner: { width: 70, height: 70, borderRadius: 35, justifyContent: "center", alignItems: "center" },
-  captureCore: { width: 62, height: 62, borderRadius: 31, backgroundColor: C.white, justifyContent: "center", alignItems: "center" },
+  captureInner: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  captureCore: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    backgroundColor: C.white,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   captureCoreDisabled: { backgroundColor: "rgba(255,255,255,0.25)" },
   captureHint: {
     fontSize: 13,
@@ -1730,115 +1781,471 @@ const ds = StyleSheet.create({
     alignItems: "center",
     overflow: "hidden",
   },
-  backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.12)", justifyContent: "center", alignItems: "center" },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   headerTitle: { color: C.white, fontSize: 17, fontWeight: "800" },
   headerSub: { color: "rgba(255,255,255,0.55)", fontSize: 11, marginTop: 1 },
-  photoBadge: { paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "rgba(201,149,42,0.2)", borderRadius: 10, borderWidth: 1, borderColor: "rgba(201,149,42,0.4)" },
+  photoBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: "rgba(201,149,42,0.2)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(201,149,42,0.4)",
+  },
   photoBadgeText: { color: C.gold, fontSize: 12, fontWeight: "700" },
   sectionLabel: { fontSize: 13, fontWeight: "700", color: C.ink, marginBottom: 10 },
-
   thumbWrap: { position: "relative", width: 100, height: 100 },
   thumb: { width: 100, height: 100, borderRadius: 14, borderWidth: 2, borderColor: C.border },
-  thumbOverlay: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "rgba(11,45,107,0.75)", borderBottomLeftRadius: 12, borderBottomRightRadius: 12, paddingVertical: 4, alignItems: "center" },
+  thumbOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(11,45,107,0.75)",
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    paddingVertical: 4,
+    alignItems: "center",
+  },
   thumbOverlayText: { color: C.gold, fontSize: 9, fontWeight: "700" },
-  thumbDelete: { position: "absolute", top: -6, right: -6, width: 22, height: 22, borderRadius: 11, backgroundColor: C.error, justifyContent: "center", alignItems: "center", borderWidth: 2, borderColor: C.white },
-  thumbNum: { position: "absolute", top: 6, left: 6, width: 22, height: 22, borderRadius: 11, backgroundColor: C.navy, justifyContent: "center", alignItems: "center" },
+  thumbDelete: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: C.error,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: C.white,
+  },
+  thumbNum: {
+    position: "absolute",
+    top: 6,
+    left: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: C.navy,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   thumbNumText: { color: C.white, fontSize: 10, fontWeight: "800" },
-  addMoreBtn: { width: 100, height: 100, borderRadius: 14, borderWidth: 2, borderColor: C.sage, borderStyle: "dashed", justifyContent: "center", alignItems: "center", gap: 6, backgroundColor: C.sageLight },
+  addMoreBtn: {
+    width: 100,
+    height: 100,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: C.sage,
+    borderStyle: "dashed",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: C.sageLight,
+  },
   addMoreText: { fontSize: 11, fontWeight: "700", color: C.navyMid },
-
-  mapContainer: { backgroundColor: C.white, borderRadius: 16, overflow: "hidden", marginBottom: 24, borderWidth: 1, borderColor: C.border },
-  mapHeader: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 10 },
+  mapContainer: {
+    backgroundColor: C.white,
+    borderRadius: 16,
+    overflow: "hidden",
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  mapHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
   mapHeaderText: { fontSize: 12, fontWeight: "700", color: C.ink, flex: 1 },
-  mapExpandBtn: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: C.sageLight, borderRadius: 8 },
+  mapExpandBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: C.sageLight,
+    borderRadius: 8,
+  },
   mapExpandText: { fontSize: 10, fontWeight: "700", color: C.navyMid },
   miniMap: { width: "100%", height: 160 },
-  mapCoordsRow: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: C.sageLight },
-  mapCoordsText: { fontSize: 10, color: C.muted, fontWeight: "600", fontFamily: "monospace", flex: 1 },
-  markerDot: { width: 20, height: 20, borderRadius: 10, backgroundColor: C.navy, borderWidth: 3, borderColor: C.white, justifyContent: "center", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3, elevation: 4 },
+  mapCoordsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: C.sageLight,
+  },
+  mapCoordsText: {
+    fontSize: 10,
+    color: C.muted,
+    fontWeight: "600",
+    fontFamily: "monospace",
+    flex: 1,
+  },
+  markerDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: C.navy,
+    borderWidth: 3,
+    borderColor: C.white,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 4,
+  },
   markerInner: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.white },
-  miniPhotoMarker: { width: 18, height: 18, borderRadius: 9, backgroundColor: C.gold, justifyContent: "center", alignItems: "center", borderWidth: 1.5, borderColor: C.white },
-
-  input: { backgroundColor: C.white, borderRadius: 16, padding: 16, fontSize: 14, color: C.ink, borderWidth: 1.5, borderColor: C.border, minHeight: 140, lineHeight: 22 },
+  miniPhotoMarker: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: C.gold,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: C.white,
+  },
+  input: {
+    backgroundColor: C.white,
+    borderRadius: 16,
+    padding: 16,
+    fontSize: 14,
+    color: C.ink,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    minHeight: 140,
+    lineHeight: 22,
+  },
   charCount: { fontSize: 11, color: C.muted, textAlign: "right", marginTop: 6, marginBottom: 16 },
-  errorBox: { backgroundColor: "#FEE2E2", borderRadius: 12, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: "#FCA5A5" },
+  errorBox: {
+    backgroundColor: "#FEE2E2",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+  },
   errorText: { color: C.error, fontSize: 13, fontWeight: "600" },
-  infoBox: { backgroundColor: C.sageLight, borderRadius: 14, padding: 14, marginBottom: 20, borderWidth: 1, borderColor: C.sage },
+  infoBox: {
+    backgroundColor: C.sageLight,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: C.sage,
+  },
   infoText: { color: C.navyMid, fontSize: 13, lineHeight: 20, fontWeight: "500" },
-  submitBtn: { backgroundColor: C.navy, borderRadius: 16, paddingVertical: 16, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, shadowColor: C.navy, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 8 },
+  submitBtn: {
+    backgroundColor: C.navy,
+    borderRadius: 16,
+    paddingVertical: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    shadowColor: C.navy,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
   submitBtnText: { color: C.white, fontSize: 16, fontWeight: "800" },
 });
 
 const sub = StyleSheet.create({
   box: { alignItems: "center", gap: 20, padding: 32 },
-  spinner: { width: 80, height: 80, borderRadius: 24, backgroundColor: "rgba(255,255,255,0.08)", justifyContent: "center", alignItems: "center", borderWidth: 2, borderColor: "rgba(201,149,42,0.3)" },
+  spinner: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "rgba(201,149,42,0.3)",
+  },
   title: { color: C.white, fontSize: 20, fontWeight: "800" },
   sub: { color: "rgba(255,255,255,0.55)", fontSize: 14, textAlign: "center" },
-  bar: { width: 220, height: 6, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 3, overflow: "hidden" },
+  bar: {
+    width: 220,
+    height: 6,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 3,
+    overflow: "hidden",
+  },
   barFill: { height: "100%", backgroundColor: C.gold, borderRadius: 3 },
 });
 
 const cf = StyleSheet.create({
   container: { alignItems: "center", padding: 28, paddingTop: 48, paddingBottom: 60 },
-  circle: { width: 130, height: 130, borderRadius: 65, backgroundColor: "rgba(22,163,74,0.15)", justifyContent: "center", alignItems: "center", marginBottom: 28, borderWidth: 3, borderColor: "rgba(22,163,74,0.3)" },
-  headline: { fontSize: 28, fontWeight: "800", color: C.white, textAlign: "center", marginBottom: 12 },
-  subText: { fontSize: 15, color: "rgba(255,255,255,0.65)", textAlign: "center", lineHeight: 23, marginBottom: 32 },
-  card: { backgroundColor: C.white, borderRadius: 20, padding: 20, width: "100%", marginBottom: 20, borderWidth: 1, borderColor: C.border },
+  circle: {
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    backgroundColor: "rgba(22,163,74,0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 28,
+    borderWidth: 3,
+    borderColor: "rgba(22,163,74,0.3)",
+  },
+  headline: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: C.white,
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  subText: {
+    fontSize: 15,
+    color: "rgba(255,255,255,0.65)",
+    textAlign: "center",
+    lineHeight: 23,
+    marginBottom: 32,
+  },
+  card: {
+    backgroundColor: C.white,
+    borderRadius: 20,
+    padding: 20,
+    width: "100%",
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 4 },
-  cardIconCircle: { width: 42, height: 42, borderRadius: 12, backgroundColor: C.sageLight, justifyContent: "center", alignItems: "center" },
+  cardIconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: C.sageLight,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   cardTitle: { fontSize: 15, fontWeight: "800", color: C.ink },
   cardSub: { fontSize: 12, color: C.muted, marginTop: 2 },
-  row: { flexDirection: "row", alignItems: "center", paddingVertical: 10, borderTopWidth: 1, borderTopColor: C.border },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
   rowLabel: { flex: 1, fontSize: 13, color: C.muted, fontWeight: "600" },
   rowValue: { fontSize: 13, fontWeight: "800", color: C.ink },
-
-  mapCard: { backgroundColor: C.white, borderRadius: 16, overflow: "hidden", width: "100%", marginBottom: 20, borderWidth: 1, borderColor: C.border },
-  mapCardHeader: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 10 },
+  mapCard: {
+    backgroundColor: C.white,
+    borderRadius: 16,
+    overflow: "hidden",
+    width: "100%",
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  mapCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
   mapCardTitle: { fontSize: 12, fontWeight: "700", color: C.ink },
   mapSnapshot: { width: "100%", height: 160 },
-  mapCoords: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: C.sageLight },
-  mapCoordsText: { fontSize: 10, color: C.muted, fontWeight: "600", fontFamily: "monospace", flex: 1 },
-  markerDot: { width: 22, height: 22, borderRadius: 11, backgroundColor: C.navy, borderWidth: 3, borderColor: C.white, justifyContent: "center", alignItems: "center" },
+  mapCoords: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: C.sageLight,
+  },
+  mapCoordsText: {
+    fontSize: 10,
+    color: C.muted,
+    fontWeight: "600",
+    fontFamily: "monospace",
+    flex: 1,
+  },
+  markerDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: C.navy,
+    borderWidth: 3,
+    borderColor: C.white,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   markerInner: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: C.white },
-
-  statusPill: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(255,255,255,0.1)", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 24, borderWidth: 1, borderColor: "rgba(255,255,255,0.15)", marginBottom: 20 },
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    marginBottom: 20,
+  },
   statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.gold },
   statusText: { color: C.white, fontSize: 13, fontWeight: "700" },
-  footNote: { color: "rgba(255,255,255,0.45)", fontSize: 12, textAlign: "center", lineHeight: 20, marginBottom: 32 },
-  homeBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: C.white, paddingVertical: 16, paddingHorizontal: 32, borderRadius: 16, width: "100%", shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 8, elevation: 5 },
+  footNote: {
+    color: "rgba(255,255,255,0.45)",
+    fontSize: 12,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 32,
+  },
+  homeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: C.white,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 16,
+    width: "100%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 5,
+  },
   homeBtnText: { color: C.navy, fontSize: 16, fontWeight: "800" },
 });
 
 const ms = StyleSheet.create({
   noLocContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
   noLocText: { color: C.muted, fontSize: 15, fontWeight: "600" },
-
   header: { position: "absolute", top: 0, left: 0, right: 0 },
-  headerBlur: { paddingTop: Platform.OS === "ios" ? 54 : 42, paddingBottom: 14, paddingHorizontal: 20, flexDirection: "row", alignItems: "center", overflow: "hidden", borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,0.08)" },
-  backBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.12)", justifyContent: "center", alignItems: "center" },
+  headerBlur: {
+    paddingTop: Platform.OS === "ios" ? 54 : 42,
+    paddingBottom: 14,
+    paddingHorizontal: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    overflow: "hidden",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.08)",
+  },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   headerTitle: { color: C.white, fontSize: 15, fontWeight: "800" },
   headerSub: { color: "rgba(255,255,255,0.55)", fontSize: 11, marginTop: 1 },
-  gpsPill: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 5, backgroundColor: "rgba(16,185,129,0.15)", borderRadius: 10, borderWidth: 1, borderColor: "rgba(16,185,129,0.3)" },
+  gpsPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: "rgba(16,185,129,0.15)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(16,185,129,0.3)",
+  },
   gpsDot: { width: 8, height: 8, borderRadius: 4 },
   gpsPillText: { fontSize: 11, fontWeight: "700", color: C.white },
-
   coordsFooter: { position: "absolute", bottom: 0, left: 0, right: 0 },
-  coordsBlur: { paddingHorizontal: 20, paddingVertical: 16, paddingBottom: Platform.OS === "ios" ? 36 : 20, overflow: "hidden", borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)", gap: 10 },
+  coordsBlur: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingBottom: Platform.OS === "ios" ? 36 : 20,
+    overflow: "hidden",
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.08)",
+    gap: 10,
+  },
   coordsRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  coordsText: { fontSize: 12, fontWeight: "600", color: C.white, fontFamily: "monospace", flex: 1 },
-  accBadge: { paddingHorizontal: 8, paddingVertical: 4, backgroundColor: "rgba(16,185,129,0.2)", borderRadius: 8, borderWidth: 1, borderColor: "rgba(16,185,129,0.3)" },
+  coordsText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: C.white,
+    fontFamily: "monospace",
+    flex: 1,
+  },
+  accBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: "rgba(16,185,129,0.2)",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(16,185,129,0.3)",
+  },
   accText: { fontSize: 11, fontWeight: "700", color: "#10B981" },
   photoCountRow: { paddingHorizontal: 4 },
   photoCountText: { fontSize: 12, color: "rgba(255,255,255,0.7)", fontWeight: "500" },
-  backToCameraBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: C.navy, paddingVertical: 14, borderRadius: 14 },
+  backToCameraBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: C.navy,
+    paddingVertical: 14,
+    borderRadius: 14,
+  },
   backToCameraBtnText: { color: C.white, fontSize: 14, fontWeight: "800" },
-
   marker: { width: 28, height: 28, borderRadius: 14, justifyContent: "center", alignItems: "center" },
-  markerPulse: { position: "absolute", width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(11,45,107,0.25)", borderWidth: 1, borderColor: "rgba(11,45,107,0.5)" },
-  markerCore: { width: 14, height: 14, borderRadius: 7, backgroundColor: C.navy, borderWidth: 2.5, borderColor: C.white },
-
+  markerPulse: {
+    position: "absolute",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(11,45,107,0.25)",
+    borderWidth: 1,
+    borderColor: "rgba(11,45,107,0.5)",
+  },
+  markerCore: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: C.navy,
+    borderWidth: 2.5,
+    borderColor: C.white,
+  },
   photoMarker: { position: "relative" },
-  photoMarkerThumb: { width: 40, height: 40, borderRadius: 8, borderWidth: 2, borderColor: C.gold },
-  photoMarkerBadge: { position: "absolute", top: -6, right: -6, width: 16, height: 16, borderRadius: 8, backgroundColor: C.navy, justifyContent: "center", alignItems: "center", borderWidth: 1.5, borderColor: C.gold },
+  photoMarkerThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: C.gold,
+  },
+  photoMarkerBadge: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: C.navy,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: C.gold,
+  },
   photoMarkerBadgeText: { color: C.white, fontSize: 8, fontWeight: "800" },
 });

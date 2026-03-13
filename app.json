@@ -4,6 +4,15 @@
     "slug": "social-activity-tracker",
     "plugins": [
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2b0107b9-4724-40e9-b07d-76cc0486560b"
+      }
+    },
+    "android": {
+      "package": "com.surajshenoy15.socialactivitytracker",
+      "usesCleartextTraffic": true
+    }
   }
 }

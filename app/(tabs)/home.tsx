@@ -145,7 +145,7 @@ export default function Home() {
         <Animated.View style={[s.brandRow, { opacity: headerAnim, transform: [{ translateY: headerSlide }] }]}>
           <View style={s.logoBadge}>
             <Image
-              source={require("../../assets/images/vikasana_logo.png")}
+              source={require("../../assets/images/PNG-01.png")}
               style={s.logoImg}
               resizeMode="contain"
             />
@@ -241,6 +241,7 @@ export default function Home() {
 
         {/* Gold accent strip */}
         <View style={s.goldStrip} />
+        
 
         {/* Footer */}
         <Animated.View style={[s.footer, { opacity: footerFade }]}>
@@ -249,13 +250,19 @@ export default function Home() {
             <Text style={s.footerBrand}>Vikasana Foundation</Text>
           </Text>
           <View style={s.footerLinks}>
-            <TouchableOpacity onPress={() => router.push("/terms")} activeOpacity={0.7}>
-              <Text style={s.footerLink}>Terms of Service</Text>
-            </TouchableOpacity>
-            <Text style={s.footerSep}>·</Text>
-            <TouchableOpacity onPress={() => router.push("/privacy")} activeOpacity={0.7}>
-              <Text style={s.footerLink}>Privacy Policy</Text>
-            </TouchableOpacity>
+            <TouchableOpacity
+  onPress={() => router.push("/(student)/terms-faq")}
+  activeOpacity={0.7}
+>
+  <Text style={s.footerLink}>Terms of Service</Text>
+</TouchableOpacity>
+<Text style={s.footerSep}>·</Text>
+<TouchableOpacity
+  onPress={() => router.push("/(student)/terms-faq")}
+  activeOpacity={0.7}
+>
+  <Text style={s.footerLink}>Privacy Policy</Text>
+</TouchableOpacity>
           </View>
           <Text style={s.footerVersion}>v1.0.0  ·  AICTE Approved  ·  VTU Affiliated</Text>
         </Animated.View>
