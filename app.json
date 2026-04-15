@@ -2,6 +2,7 @@
   "expo": {
     "name": "Social Activity Tracker",
     "slug": "social-activity-tracker",
+    "icon": "./assets/images/PNG-01.png",
     "plugins": [
       "expo-secure-store"
     ],
@@ -12,7 +13,11 @@
     },
     "android": {
       "package": "com.surajshenoy15.socialactivitytracker",
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/PNG-01.png",
+        "backgroundColor": "#ffffff"
+      }
     }
   }
 }

@@ -37,7 +37,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 const VikasanaLogo = require("../../assets/images/vikasana_logo.png");
 // ─── Config ───────────────────────────────────────────────────
-const BASE_URL = "http://31.97.230.171:8000/api";
+const BASE_URL = "http://187.127.151.123:8001/api";
 
 // ─── Storage keys ─────────────────────────────────────────────
 const REG_PREFIX = "reg_";
@@ -340,8 +340,16 @@ function daysUntil(e: AdminEvent): number | null {
 function normalizeThumbUrl(raw?: string | null): string | null {
   const u = (raw ?? "").trim();
   if (!u) return null;
-  if (u.startsWith("/")) return `http://31.97.230.171:9000${u}`;
-  return u;
+
+  if (u.startsWith("http://") || u.startsWith("https://")) {
+    return u;
+  }
+
+  if (u.startsWith("/")) {
+    return `http://187.127.151.123:9001${u}`;
+  }
+
+  return `http://187.127.151.123:9001/vikasana-event-thumbnails/${u}`;
 }
 
 // ✅ CERTIFICATE FIX: try multiple endpoints (because /student/events/:id/certificates is 404 on your server)
@@ -510,7 +518,16 @@ function EventCard({
     <View style={ec.card}>
       {showThumb ? (
         <View style={ec.thumbWrap}>
-          <Image source={{ uri: thumbUrl! }} style={ec.thumb} resizeMode="cover" onError={() => setThumbError(true)} />
+          <Image
+            source={{ uri: thumbUrl! }}
+            style={ec.thumb}
+            resizeMode="cover"
+            onError={(e) => {
+            console.log("Thumbnail load error:", e.nativeEvent);
+           console.log("Failed thumbnail URL:", thumbUrl);
+            setThumbError(true);
+            }}
+          />
           <View style={[ec.thumbAccent, { backgroundColor: accentColor }]} />
           {status === "ongoing" && (
             <View style={ec.liveChip}>

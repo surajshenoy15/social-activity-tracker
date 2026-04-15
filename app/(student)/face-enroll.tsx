@@ -26,7 +26,7 @@ import { LinearGradient } from "expo-linear-gradient";
 
 const { width } = Dimensions.get("window");
 
-const BASE_URL = "http://31.97.230.171:8000/api";
+const BASE_URL = "http://187.127.151.123:8001/api";
 const TARGET_COUNT = 5;
 
 // ── Brand tokens (Vikasana) ──────────────────────────────────────────────────

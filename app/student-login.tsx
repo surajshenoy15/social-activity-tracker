@@ -27,7 +27,7 @@ import {
 } from "lucide-react-native";
 
 const { width, height } = Dimensions.get("window");
-const API_BASE = "http://31.97.230.171:8000/api";
+const API_BASE = "http://187.127.151.123:8001/api";
 
 // ─── Colour tokens ──────────────────────────────────────────
 const C = {

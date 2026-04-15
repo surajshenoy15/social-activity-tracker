@@ -15,7 +15,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ArrowLeft, Calendar, MapPin, FileText } from "lucide-react-native";
 
-const BASE_URL = "http://31.97.230.171:8000/api";
+const BASE_URL = "http://187.127.151.123:8001/api";
 
 // ─── Colour tokens ────────────────────────────────────────────
 const C = {

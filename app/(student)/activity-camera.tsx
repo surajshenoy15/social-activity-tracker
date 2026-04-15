@@ -36,12 +36,12 @@ import {
 } from "lucide-react-native";
 
 // ─── Config ───────────────────────────────────────────────────
-const BASE_URL = "http://31.97.230.171:8000/api";
+const BASE_URL = "http://187.127.151.123:8001/api";
 const MAX_PHOTOS = 5;
 const FRONT_CAM_COUNT = 2;
 
 // ─── MinIO (optional) ─────────────────────────────────────────
-const MINIO_PUBLIC_BASE = "http://31.97.230.171:9000";
+const MINIO_PUBLIC_BASE = "http://187.127.151.123:9001";
 const MINIO_FACE_BUCKET = "face-verification";
 
 function buildMinioObjectUrl(objectKey?: string | null) {
