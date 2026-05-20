@@ -14,6 +14,12 @@
     "android": {
       "package": "com.surajshenoy15.socialactivitytracker",
       "usesCleartextTraffic": true,
+      "permissions": [
+        "INTERNET",
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/PNG-01.png",
         "backgroundColor": "#ffffff"
