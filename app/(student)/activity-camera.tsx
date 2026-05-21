@@ -245,6 +245,7 @@ export default function ActivityCameraScreen() {
 
   const cameraRef = useRef<any>(null);
   const mapRef = useRef<MapView>(null);
+  const draftAlertShownRef = useRef(false);
 
   const [permission, requestPermission] = useCameraPermissions();
 
@@ -640,7 +641,16 @@ const uploadCapturedPhotoImmediately = async (
 
   return permanentUri;
 };
- const capturePhoto = async () => {
+const photoSource = (uri: string) => {
+  if (!uri) return undefined;
+
+  if (uri.startsWith("file://")) {
+    return { uri };
+  }
+
+  return { uri: `file://${uri}` };
+};
+const capturePhoto = async () => {
   if (!cameraRef.current) return;
   if (uploadingPhoto) return;
 
@@ -677,7 +687,6 @@ const uploadCapturedPhotoImmediately = async (
 
     const nextSeqNo = photos.length + 1;
 
-    // Save camera temp image into permanent app storage
     const permanentUri = await persistPhotoLocally(
       photo.uri,
       String(eventId),
@@ -698,13 +707,11 @@ const uploadCapturedPhotoImmediately = async (
     const updated = [...photos, newPhoto];
     setPhotos(updated);
 
-    // Save draft immediately
     await AsyncStorage.setItem(DRAFT_PHOTOS_KEY, JSON.stringify(updated));
     await AsyncStorage.setItem(DRAFT_DESC_KEY, description || "");
     await AsyncStorage.setItem(PROG_KEY, "in_progress");
     await AsyncStorage.setItem(PROG_SUB_KEY, String(subId));
 
-    // Try uploading, but do not delete local draft if upload fails
     try {
       await uploadCapturedPhotoImmediately(subId, newPhoto, nextSeqNo);
 
@@ -720,10 +727,14 @@ const uploadCapturedPhotoImmediately = async (
     } catch (uploadErr: any) {
       console.log("Photo saved locally but upload failed:", uploadErr?.message);
 
-      Alert.alert(
-        "Saved as Draft",
-        "Photo is saved on this phone. It will be uploaded when you submit again."
-      );
+      if (!draftAlertShownRef.current) {
+        draftAlertShownRef.current = true;
+
+        Alert.alert(
+          "Saved as Draft",
+          "Photo is saved on this phone. Remaining photos will continue to be saved silently."
+        );
+      }
     }
 
     if (updated.length === MAX_PHOTOS) {
@@ -892,115 +903,128 @@ const uploadCapturedPhotoImmediately = async (
   }
 
   // ─── Confirmation screen ──────────────────────────────────
-  if (mode === "confirmation") {
-    return (
-      <SafeAreaView style={[s.safe, { backgroundColor: C.navy }]}>
-        <StatusBar barStyle="light-content" backgroundColor={C.navy} />
-        <ScrollView contentContainerStyle={cf.container} showsVerticalScrollIndicator={false}>
-          <Animated.View
-            style={[
-              cf.circle,
-              { transform: [{ scale: successScale }], opacity: successOpacity },
-            ]}
-          >
-            <CheckCircle size={64} color={C.success} strokeWidth={1.5} />
-          </Animated.View>
+ if (mode === "confirmation") {
+  return (
+    <SafeAreaView style={[s.safe, { backgroundColor: C.navy }]}>
+      <StatusBar barStyle="light-content" backgroundColor={C.navy} />
 
-          <Animated.View style={{ opacity: successOpacity, alignItems: "center" }}>
-            <Text style={cf.headline}>Activity Submitted</Text>
-            <Text style={cf.subText}>
-              Your activity is now under approval. You will be notified soon.
-            </Text>
+      <ScrollView
+        contentContainerStyle={cf.container}
+        showsVerticalScrollIndicator={false}
+      >
+        <Animated.View
+          style={[
+            cf.circle,
+            {
+              transform: [{ scale: successScale }],
+              opacity: successOpacity,
+            },
+          ]}
+        >
+          <CheckCircle size={64} color={C.success} strokeWidth={1.5} />
+        </Animated.View>
 
+        <Animated.View style={{ opacity: successOpacity, alignItems: "center" }}>
+          <Text style={cf.headline}>Activity Submitted</Text>
+
+          <Text style={cf.subText}>
+            Your activity is now under approval. You will be notified soon.
+          </Text>
+
+          <View style={cf.card}>
+            <View style={cf.cardHeader}>
+              <View style={cf.cardIconCircle}>
+                <FileText size={18} color={C.navy} strokeWidth={2} />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text style={cf.cardTitle}>{eventTitle ?? "Activity"}</Text>
+                <Text style={cf.cardSub}>Submission Summary</Text>
+              </View>
+            </View>
+
+            <View
+              style={{
+                height: 1,
+                backgroundColor: C.border,
+                marginVertical: 12,
+              }}
+            />
+
+            {[
+              { label: "Photos Uploaded", value: `${photos.length} of ${MAX_PHOTOS}` },
+              { label: "GPS Stamped", value: locGranted ? "Yes" : "No" },
+              { label: "Status", value: "Pending Review" },
+              { label: "Points", value: "Awarded upon approval" },
+            ].map((row) => (
+              <View key={row.label} style={cf.row}>
+                <Text style={cf.rowLabel}>{row.label}</Text>
+                <Text style={cf.rowValue}>{row.value}</Text>
+              </View>
+            ))}
+          </View>
+
+          {location && (
             <View style={cf.card}>
               <View style={cf.cardHeader}>
                 <View style={cf.cardIconCircle}>
-                  <FileText size={18} color={C.navy} strokeWidth={2} />
+                  <Ionicons name="location" size={18} color={C.navy} />
                 </View>
+
                 <View style={{ flex: 1 }}>
-                  <Text style={cf.cardTitle}>{eventTitle ?? "Activity"}</Text>
-                  <Text style={cf.cardSub}>Submission Summary</Text>
+                  <Text style={cf.cardTitle}>Submission Location</Text>
+                  <Text style={cf.cardSub}>GPS stamped coordinates</Text>
                 </View>
               </View>
 
-              <View style={{ height: 1, backgroundColor: C.border, marginVertical: 12 }} />
+              <View
+                style={{
+                  height: 1,
+                  backgroundColor: C.border,
+                  marginVertical: 12,
+                }}
+              />
 
-              {[
-                { label: "Photos Uploaded", value: `${photos.length} of ${MAX_PHOTOS}` },
-                { label: "GPS Stamped", value: locGranted ? "Yes" : "No" },
-                { label: "Status", value: "Pending Review" },
-                { label: "Points", value: "Awarded upon approval" },
-              ].map((row) => (
-                <View key={row.label} style={cf.row}>
-                  <Text style={cf.rowLabel}>{row.label}</Text>
-                  <Text style={cf.rowValue}>{row.value}</Text>
-                </View>
-              ))}
-            </View>
-
-            {location && (
-              <View style={cf.mapCard}>
-                <View style={cf.mapCardHeader}>
-                  <Ionicons name="location" size={14} color={C.navy} />
-                  <Text style={cf.mapCardTitle}>Submission Location</Text>
-                </View>
-                <MapView
-                  style={cf.mapSnapshot}
-                  initialRegion={{
-                    latitude: location.latitude,
-                    longitude: location.longitude,
-                    latitudeDelta: 0.003,
-                    longitudeDelta: 0.003,
-                  }}
-                  scrollEnabled={false}
-                  zoomEnabled={false}
-                  pitchEnabled={false}
-                  rotateEnabled={false}
-                >
-                  <Marker coordinate={{ latitude: location.latitude, longitude: location.longitude }}>
-                    <View style={cf.markerDot}>
-                      <View style={cf.markerInner} />
-                    </View>
-                  </Marker>
-                  <Circle
-                    center={{ latitude: location.latitude, longitude: location.longitude }}
-                    radius={gpsAccuracy ?? 20}
-                    fillColor="rgba(11,45,107,0.12)"
-                    strokeColor="rgba(11,45,107,0.4)"
-                    strokeWidth={1.5}
-                  />
-                </MapView>
-                <View style={cf.mapCoords}>
-                  <Ionicons name="navigate-outline" size={11} color={C.muted} />
-                  <Text style={cf.mapCoordsText}>
-                    {location.latitude.toFixed(6)}°, {location.longitude.toFixed(6)}°
-                    {gpsAccuracy ? `  ±${gpsAccuracy.toFixed(0)}m` : ""}
-                  </Text>
-                </View>
+              <View style={cf.row}>
+                <Text style={cf.rowLabel}>Latitude</Text>
+                <Text style={cf.rowValue}>{location.latitude.toFixed(6)}°</Text>
               </View>
-            )}
 
-            <View style={cf.statusPill}>
-              <View style={cf.statusDot} />
-              <Text style={cf.statusText}>Under Faculty Review</Text>
+              <View style={cf.row}>
+                <Text style={cf.rowLabel}>Longitude</Text>
+                <Text style={cf.rowValue}>{location.longitude.toFixed(6)}°</Text>
+              </View>
+
+              <View style={cf.row}>
+                <Text style={cf.rowLabel}>Accuracy</Text>
+                <Text style={cf.rowValue}>
+                  {gpsAccuracy ? `±${gpsAccuracy.toFixed(0)}m` : "Not available"}
+                </Text>
+              </View>
             </View>
+          )}
 
-            <Text style={cf.footNote}>
-              You will receive a notification once your activity has been reviewed.
-            </Text>
+          <View style={cf.statusPill}>
+            <View style={cf.statusDot} />
+            <Text style={cf.statusText}>Under Faculty Review</Text>
+          </View>
 
-            <TouchableOpacity
-              style={cf.homeBtn}
-              onPress={() => router.replace("/(student)/dashboard")}
-            >
-              <Text style={cf.homeBtnText}>Back to Home</Text>
-              <ChevronRight size={18} color={C.navy} strokeWidth={2.5} />
-            </TouchableOpacity>
-          </Animated.View>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
+          <Text style={cf.footNote}>
+            You will receive a notification once your activity has been reviewed.
+          </Text>
+
+          <TouchableOpacity
+            style={cf.homeBtn}
+            onPress={() => router.replace("/(student)/dashboard")}
+          >
+            <Text style={cf.homeBtnText}>Back to Home</Text>
+            <ChevronRight size={18} color={C.navy} strokeWidth={2.5} />
+          </TouchableOpacity>
+        </Animated.View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
 
   // ─── Submitting screen ────────────────────────────────────
   if (mode === "submitting") {
@@ -1087,7 +1111,7 @@ const uploadCapturedPhotoImmediately = async (
                 anchor={{ x: 0.5, y: 0.5 }}
               >
                 <View style={ms.photoMarker}>
-                  <Image source={{ uri: p.uri }} style={ms.photoMarkerThumb} />
+                  <Image source={photoSource(p.uri)} style={ms.photoMarkerThumb} />
                   <View style={ms.photoMarkerBadge}>
                     <Text style={ms.photoMarkerBadgeText}>{i + 1}</Text>
                   </View>
@@ -1190,7 +1214,7 @@ const uploadCapturedPhotoImmediately = async (
           >
             {photos.map((p, i) => (
               <View key={i} style={ds.thumbWrap}>
-                <Image source={{ uri: p.uri }} style={ds.thumb} resizeMode="cover" />
+                <Image source={photoSource(p.uri)} style={ds.thumb} resizeMode="cover" />
                 <View style={ds.thumbOverlay}>
                   <Text style={ds.thumbOverlayText}>
                     {i < FRONT_CAM_COUNT ? "Selfie" : "Scene"}
@@ -1214,69 +1238,21 @@ const uploadCapturedPhotoImmediately = async (
           </ScrollView>
 
           {location && (
-            <View style={ds.mapContainer}>
-              <View style={ds.mapHeader}>
-                <Ionicons name="location" size={13} color={C.navy} />
-                <Text style={ds.mapHeaderText}>Capture Location</Text>
-                <TouchableOpacity style={ds.mapExpandBtn} onPress={() => setMode("map")}>
-                  <Map size={12} color={C.navyMid} strokeWidth={2} />
-                  <Text style={ds.mapExpandText}>Expand</Text>
-                </TouchableOpacity>
-              </View>
+  <View style={ds.infoBox}>
+    <Text style={ds.infoText}>
+      Location: {location.latitude.toFixed(5)}°, {location.longitude.toFixed(5)}°
+      {gpsAccuracy ? `  ±${gpsAccuracy.toFixed(0)}m` : ""}
+    </Text>
 
-              <MapView
-                style={ds.miniMap}
-                initialRegion={{
-                  latitude: location.latitude,
-                  longitude: location.longitude,
-                  latitudeDelta: 0.003,
-                  longitudeDelta: 0.003,
-                }}
-                scrollEnabled={false}
-                zoomEnabled={false}
-                pitchEnabled={false}
-                rotateEnabled={false}
-              >
-                <Marker
-                  coordinate={{ latitude: location.latitude, longitude: location.longitude }}
-                >
-                  <View style={ds.markerDot}>
-                    <View style={ds.markerInner} />
-                  </View>
-                </Marker>
-
-                <Circle
-                  center={{ latitude: location.latitude, longitude: location.longitude }}
-                  radius={gpsAccuracy ?? 20}
-                  fillColor="rgba(11,45,107,0.12)"
-                  strokeColor="rgba(11,45,107,0.4)"
-                  strokeWidth={1.5}
-                />
-
-                {photos.map((p, i) => (
-                  <Marker
-                    key={i}
-                    coordinate={{ latitude: p.latitude, longitude: p.longitude }}
-                    anchor={{ x: 0.5, y: 0.5 }}
-                  >
-                    <View style={ds.miniPhotoMarker}>
-                      <Text style={{ fontSize: 8, fontWeight: "800", color: C.white }}>
-                        {i + 1}
-                      </Text>
-                    </View>
-                  </Marker>
-                ))}
-              </MapView>
-
-              <View style={ds.mapCoordsRow}>
-                <Ionicons name="navigate-outline" size={11} color={C.muted} />
-                <Text style={ds.mapCoordsText}>
-                  {location.latitude.toFixed(5)}°, {location.longitude.toFixed(5)}°
-                  {gpsAccuracy ? `  ±${gpsAccuracy.toFixed(0)}m` : ""}
-                </Text>
-              </View>
-            </View>
-          )}
+    <TouchableOpacity
+      style={[ds.mapExpandBtn, { marginTop: 10, alignSelf: "flex-start" }]}
+      onPress={() => setMode("map")}
+    >
+      <Map size={12} color={C.navyMid} strokeWidth={2} />
+      <Text style={ds.mapExpandText}>View Full Map</Text>
+    </TouchableOpacity>
+  </View>
+)}
 
           <Text style={ds.sectionLabel}>
             Description{" "}
@@ -1492,7 +1468,7 @@ const uploadCapturedPhotoImmediately = async (
             >
               {photos.map((p, i) => (
                 <View key={i} style={s.miniThumbWrap}>
-                  <Image source={{ uri: p.uri }} style={s.miniThumb} resizeMode="cover" />
+                  <Image source={photoSource(p.uri)} style={s.miniThumb} resizeMode="cover" />
                   <View style={s.miniThumbBadge}>
                     <Text style={s.miniThumbBadgeText}>{i + 1}</Text>
                   </View>
