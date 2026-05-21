@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Social Activity Tracker",
-    "slug": "social-activity-tracker",
+    "name": "LoRa Connect",
+    "slug": "LoRa Connect",
     "icon": "./assets/images/app-icon.png",
     "plugins": [
       "expo-secure-store",

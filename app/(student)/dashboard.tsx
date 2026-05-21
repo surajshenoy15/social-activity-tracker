@@ -337,21 +337,49 @@ function daysUntil(e: AdminEvent): number | null {
   return Math.max(0, Math.ceil((ev.getTime() - today.getTime()) / 86400000));
 }
 
+const MINIO_PUBLIC_BASE = "https://api.vikasanafoundation.org/minio";
+const EVENT_THUMBNAIL_BUCKET = "vikasana-event-thumbnails";
+
 function normalizeThumbUrl(raw?: string | null): string | null {
   const u = (raw ?? "").trim();
   if (!u) return null;
 
-  if (u.startsWith("http://") || u.startsWith("https://")) {
+  // Already correct HTTPS MinIO proxy URL
+  if (u.startsWith(`${MINIO_PUBLIC_BASE}/`)) {
     return u;
   }
 
-  if (u.startsWith("/")) {
-    return `http://187.127.151.123:9001${u}`;
+  // Old IP-based MinIO URLs: convert to HTTPS proxy
+  if (u.startsWith("http://187.127.151.123:9000")) {
+    return u.replace("http://187.127.151.123:9000", MINIO_PUBLIC_BASE);
   }
 
-  return `http://187.127.151.123:9001/vikasana-event-thumbnails/${u}`;
-}
+  if (u.startsWith("http://187.127.151.123:9001")) {
+    return u.replace("http://187.127.151.123:9001", MINIO_PUBLIC_BASE);
+  }
 
+  if (u.startsWith("http://31.97.230.171:9000")) {
+    return u.replace("http://31.97.230.171:9000", MINIO_PUBLIC_BASE);
+  }
+
+  // If backend returns "/bucket/path"
+  if (u.startsWith("/")) {
+    return `${MINIO_PUBLIC_BASE}${u}`;
+  }
+
+  // If backend returns "thumbnails/abc.jpg"
+  if (u.startsWith("thumbnails/")) {
+    return `${MINIO_PUBLIC_BASE}/${EVENT_THUMBNAIL_BUCKET}/${u}`;
+  }
+
+  // If backend returns "vikasana-event-thumbnails/thumbnails/abc.jpg"
+  if (u.startsWith(`${EVENT_THUMBNAIL_BUCKET}/`)) {
+    return `${MINIO_PUBLIC_BASE}/${u}`;
+  }
+
+  // Fallback: object key only
+  return `${MINIO_PUBLIC_BASE}/${EVENT_THUMBNAIL_BUCKET}/${u}`;
+}
 // ✅ CERTIFICATE FIX: try multiple endpoints (because /student/events/:id/certificates is 404 on your server)
 async function fetchEventCertificates(eventId: number): Promise<CertificateItem[]> {
   const paths = [
