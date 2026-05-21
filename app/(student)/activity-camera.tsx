@@ -1,6 +1,7 @@
 // app/(student)/activity-camera.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-// import * as FileSystem from "expo-file-system/legacy";
+import * as FileSystem from "expo-file-system/legacy";
+// import * as FileSystem from "expo-file-system";
 import {
   View,
   Text,
@@ -73,6 +74,7 @@ interface CapturedPhoto {
   longitude: number;
   accuracy: number | null;
   timestamp: string;
+  uploaded?: boolean;
 }
 
 type ScreenMode = "camera" | "map" | "description" | "submitting" | "confirmation";
@@ -502,48 +504,78 @@ const uploadCapturedPhotoImmediately = async (
   }, []);
 
   useEffect(() => {
-    if (!studentKey) return;
+  if (!studentKey) return;
 
-    (async () => {
+  let mounted = true;
+
+  (async () => {
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      const eid = Number(eventId);
+      if (!Number.isFinite(eid)) return;
+
+      // Try backend draft only to get submission_id
       try {
-        const token = await getToken();
-        if (!token) return;
-
-        const eid = Number(eventId);
-        if (!Number.isFinite(eid)) return;
-
         const data = await fetchEventDraft(eid, token);
+
+        if (!mounted) return;
 
         if (data?.submission_id) {
           setCreatedSubmissionId(Number(data.submission_id));
         }
-
-        const rawDesc = await AsyncStorage.getItem(DRAFT_DESC_KEY);
-        if (rawDesc) setDescription(rawDesc);
-
-        const rawPhotos = await AsyncStorage.getItem(DRAFT_PHOTOS_KEY);
-        const savedPhotos: CapturedPhoto[] = rawPhotos ? JSON.parse(rawPhotos) : [];
-
-        const uploadedSeqNos: number[] = Array.isArray(data?.uploaded_seq_nos)
-          ? data.uploaded_seq_nos
-              .map((x: any) => Number(x))
-              .filter((n: number) => Number.isFinite(n))
-          : [];
-
-        if (savedPhotos.length > 0 && uploadedSeqNos.length > 0) {
-          const restored = savedPhotos.filter((_, idx) => uploadedSeqNos.includes(idx + 1));
-          setPhotos(restored);
-          if (uploadedSeqNos.length >= MAX_PHOTOS) {
-            setMode("description");
-          }
-        } else {
-          setPhotos([]);
-        }
-      } catch (e) {
-        console.log("draft restore failed", e);
+      } catch (err) {
+        console.log("backend draft fetch failed, restoring local draft only", err);
       }
-    })();
-  }, [studentKey, eventId, DRAFT_PHOTOS_KEY, DRAFT_DESC_KEY]);
+
+      const rawDesc = await AsyncStorage.getItem(DRAFT_DESC_KEY);
+      if (!mounted) return;
+
+      if (rawDesc) setDescription(rawDesc);
+
+      const rawPhotos = await AsyncStorage.getItem(DRAFT_PHOTOS_KEY);
+      const savedPhotos: CapturedPhoto[] = rawPhotos ? JSON.parse(rawPhotos) : [];
+
+      if (!mounted) return;
+
+      if (savedPhotos.length > 0) {
+        const existingPhotos: CapturedPhoto[] = [];
+
+        for (const p of savedPhotos) {
+          if (!p?.uri) continue;
+
+          try {
+            const info = await FileSystem.getInfoAsync(p.uri);
+            if (info.exists) {
+              existingPhotos.push(p);
+            }
+          } catch (err) {
+            console.log("photo restore check failed", err);
+          }
+        }
+
+        if (!mounted) return;
+
+        setPhotos(existingPhotos);
+
+        if (existingPhotos.length >= MAX_PHOTOS) {
+          setMode("description");
+        }
+
+        console.log("Restored draft photos:", existingPhotos.length);
+      } else {
+        setPhotos([]);
+      }
+    } catch (e) {
+      console.log("draft restore failed", e);
+    }
+  })();
+
+  return () => {
+    mounted = false;
+  };
+}, [studentKey, eventId, DRAFT_PHOTOS_KEY, DRAFT_DESC_KEY]);
 
   useEffect(() => {
     if (gpsReady) {
@@ -590,63 +622,122 @@ const uploadCapturedPhotoImmediately = async (
   };
 
   // ─── Capture ──────────────────────────────────────────────
-  const capturePhoto = async () => {
-    if (!cameraRef.current) return;
-    if (uploadingPhoto) return;
+  const persistPhotoLocally = async (tempUri: string, eventId: string, seqNo: number) => {
+  const dir = `${FileSystem.documentDirectory}vikasana-drafts/`;
 
-    if (locGranted && !location) {
-      Alert.alert("GPS Required", "Waiting for GPS signal.");
-      return;
-    }
+  const dirInfo = await FileSystem.getInfoAsync(dir);
+  if (!dirInfo.exists) {
+    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  }
 
-    if (photos.length >= MAX_PHOTOS) return;
+  const filename = `event_${eventId}_photo_${seqNo}_${Date.now()}.jpg`;
+  const permanentUri = `${dir}${filename}`;
 
-    Animated.sequence([
-      Animated.timing(flashAnim, { toValue: 1, duration: 80, useNativeDriver: true }),
-      Animated.timing(flashAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
-    ]).start();
+  await FileSystem.copyAsync({
+    from: tempUri,
+    to: permanentUri,
+  });
 
+  return permanentUri;
+};
+ const capturePhoto = async () => {
+  if (!cameraRef.current) return;
+  if (uploadingPhoto) return;
+
+  if (locGranted && !location) {
+    Alert.alert("GPS Required", "Waiting for GPS signal.");
+    return;
+  }
+
+  if (photos.length >= MAX_PHOTOS) return;
+
+  Animated.sequence([
+    Animated.timing(flashAnim, {
+      toValue: 1,
+      duration: 80,
+      useNativeDriver: true,
+    }),
+    Animated.timing(flashAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }),
+  ]).start();
+
+  try {
+    setUploadingPhoto(true);
+
+    const photo = await cameraRef.current.takePictureAsync({
+      quality: 0.55,
+      base64: false,
+      skipProcessing: false,
+    });
+
+    await new Promise((r) => setTimeout(r, 400));
+
+    const nextSeqNo = photos.length + 1;
+
+    // Save camera temp image into permanent app storage
+    const permanentUri = await persistPhotoLocally(
+      photo.uri,
+      String(eventId),
+      nextSeqNo
+    );
+
+    const newPhoto: CapturedPhoto = {
+      uri: permanentUri,
+      latitude: location?.latitude ?? 0,
+      longitude: location?.longitude ?? 0,
+      accuracy: gpsAccuracy,
+      timestamp: new Date().toISOString(),
+      uploaded: false,
+    };
+
+    const subId = await ensureSubmission();
+
+    const updated = [...photos, newPhoto];
+    setPhotos(updated);
+
+    // Save draft immediately
+    await AsyncStorage.setItem(DRAFT_PHOTOS_KEY, JSON.stringify(updated));
+    await AsyncStorage.setItem(DRAFT_DESC_KEY, description || "");
+    await AsyncStorage.setItem(PROG_KEY, "in_progress");
+    await AsyncStorage.setItem(PROG_SUB_KEY, String(subId));
+
+    // Try uploading, but do not delete local draft if upload fails
     try {
-      setUploadingPhoto(true);
-
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.85,
-        base64: false,
-        skipProcessing: false,
-      });
-
-      await new Promise((r) => setTimeout(r, 400));
-
-      const newPhoto: CapturedPhoto = {
-        uri: photo.uri,
-        latitude: location?.latitude ?? 0,
-        longitude: location?.longitude ?? 0,
-        accuracy: gpsAccuracy,
-        timestamp: new Date().toISOString(),
-      };
-
-      const nextSeqNo = photos.length + 1;
-      const subId = await ensureSubmission();
-
-      const updated = [...photos, newPhoto];
-      setPhotos(updated);
-
-      await AsyncStorage.setItem(DRAFT_PHOTOS_KEY, JSON.stringify(updated));
-      await AsyncStorage.setItem(DRAFT_DESC_KEY, description || "");
-      await AsyncStorage.setItem(PROG_KEY, "in_progress");
-      await AsyncStorage.setItem(PROG_SUB_KEY, String(subId));
-
       await uploadCapturedPhotoImmediately(subId, newPhoto, nextSeqNo);
 
-      if (updated.length === MAX_PHOTOS) {
-        setTimeout(() => setMode("description"), 600);
-      }
-    } catch (e: any) {
-      Alert.alert("Upload Failed", e?.message || "Failed to capture/upload photo.");
-    } finally {
-      setUploadingPhoto(false);
+      const uploadedUpdated = updated.map((p, idx) =>
+        idx === nextSeqNo - 1 ? { ...p, uploaded: true } : p
+      );
+
+      setPhotos(uploadedUpdated);
+      await AsyncStorage.setItem(
+        DRAFT_PHOTOS_KEY,
+        JSON.stringify(uploadedUpdated)
+      );
+    } catch (uploadErr: any) {
+      console.log("Photo saved locally but upload failed:", uploadErr?.message);
+
+      Alert.alert(
+        "Saved as Draft",
+        "Photo is saved on this phone. It will be uploaded when you submit again."
+      );
     }
-  };
+
+    if (updated.length === MAX_PHOTOS) {
+      setTimeout(() => setMode("description"), 600);
+    }
+  } catch (e: any) {
+    Alert.alert(
+      "Capture Failed",
+      e?.message || "Failed to capture photo. Please try again."
+    );
+  } finally {
+    setUploadingPhoto(false);
+  }
+};
 
   const deletePhoto = (index: number) => {
     setPhotos((prev) => {
