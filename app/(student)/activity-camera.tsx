@@ -746,6 +746,27 @@ const uploadCapturedPhotoImmediately = async (
       return updated;
     });
   };
+  const uploadPendingPhotos = async (subId: number) => {
+  const updatedPhotos = [...photos];
+
+  for (let i = 0; i < updatedPhotos.length; i++) {
+    const p = updatedPhotos[i];
+
+    if (p.uploaded) continue;
+
+    await uploadCapturedPhotoImmediately(subId, p, i + 1);
+
+    updatedPhotos[i] = {
+      ...p,
+      uploaded: true,
+    };
+
+    setPhotos([...updatedPhotos]);
+    await AsyncStorage.setItem(DRAFT_PHOTOS_KEY, JSON.stringify(updatedPhotos));
+  }
+
+  return updatedPhotos;
+};
 
   // ─── Submit ───────────────────────────────────────────────
  const handleSubmit = async () => {
@@ -774,6 +795,7 @@ const uploadCapturedPhotoImmediately = async (
         geo.target_lat,
         geo.target_lng
       );
+
       if (dist > geo.radius_m) {
         throw new Error("You are outside the allowed area. Move closer and try again.");
       }
@@ -783,7 +805,10 @@ const uploadCapturedPhotoImmediately = async (
       throw new Error("Please capture at least 1 photo.");
     }
 
-    // ✅ Submit directly — backend now runs face verification automatically
+    // Upload all local draft photos that are not uploaded yet
+    await uploadPendingPhotos(subId);
+
+    // Submit after all photos are uploaded
     const submitRes = await fetch(`${BASE_URL}/student/submissions/${subId}/submit`, {
       method: "POST",
       headers: {
@@ -803,11 +828,9 @@ const uploadCapturedPhotoImmediately = async (
       throw new Error(typeof d === "string" ? d : JSON.stringify(d));
     }
 
-    // ✅ Check if backend auto-approved (face matched) or pending review
     const submissionStatus = submitJson?.status ?? "submitted";
     const faceMatched = submissionStatus === "approved";
 
-    // Clear all draft state
     await AsyncStorage.multiRemove([
       DRAFT_PHOTOS_KEY,
       DRAFT_DESC_KEY,
@@ -821,9 +844,15 @@ const uploadCapturedPhotoImmediately = async (
       (studentKey && studentKey !== "0" ? String(studentKey) : "0");
 
     await AsyncStorage.setItem(`stu_${sid}_done_${eventId}`, "done");
-    await AsyncStorage.setItem(`stu_${sid}_reg_${eventId}`, faceMatched ? "approved" : "submitted");
+    await AsyncStorage.setItem(
+      `stu_${sid}_reg_${eventId}`,
+      faceMatched ? "approved" : "submitted"
+    );
     await AsyncStorage.setItem(`done_${eventId}`, "done");
-    await AsyncStorage.setItem(`reg_${eventId}`, faceMatched ? "approved" : "submitted");
+    await AsyncStorage.setItem(
+      `reg_${eventId}`,
+      faceMatched ? "approved" : "submitted"
+    );
     await AsyncStorage.setItem(DONE_KEY, "done");
 
     setMode("confirmation");
