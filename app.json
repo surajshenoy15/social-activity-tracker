@@ -4,7 +4,15 @@
     "slug": "social-activity-tracker",
     "icon": "./assets/images/PNG-01.png",
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {
