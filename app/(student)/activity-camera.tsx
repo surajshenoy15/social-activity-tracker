@@ -1,6 +1,6 @@
 // app/(student)/activity-camera.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import * as FileSystem from "expo-file-system/legacy";
+// import * as FileSystem from "expo-file-system/legacy";
 import {
   View,
   Text,
@@ -398,58 +398,66 @@ export default function ActivityCameraScreen() {
   };
 
   // ─── FIXED: Photo Upload using FileSystem.uploadAsync ─────
-  const uploadCapturedPhotoImmediately = async (
-    submissionId: number,
-    photo: CapturedPhoto,
-    seqNo: number
-  ) => {
-    const token = await getToken();
-    if (!token) throw new Error("Login required");
+ // ─── Photo Upload using fetch + FormData ─────────────────────
+const uploadCapturedPhotoImmediately = async (
+  submissionId: number,
+  photo: CapturedPhoto,
+  seqNo: number
+) => {
+  const token = await getToken();
+  if (!token) throw new Error("Login required");
 
-    const url = `${BASE_URL}/student/events/submissions/${submissionId}/photos?start_seq=${seqNo}`;
+  const url = `${BASE_URL}/student/events/submissions/${submissionId}/photos?start_seq=${seqNo}`;
 
-    console.log("UPLOAD URL =", url);
-    console.log("PHOTO URI =", photo.uri);
-    console.log("LAT =", photo.latitude);
-    console.log("LNG =", photo.longitude);
+  console.log("UPLOAD URL =", url);
+  console.log("PHOTO URI =", photo.uri);
+  console.log("LAT =", photo.latitude);
+  console.log("LNG =", photo.longitude);
 
-    // FileSystem.uploadAsync is the only reliable way to upload
-    // file:// URIs on Android in Expo Go
-    const uploadResult = await FileSystem.uploadAsync(url, photo.uri, {
-      httpMethod: "POST",
-      uploadType: FileSystem.FileSystemUploadType?.MULTIPART,
-      fieldName: "photo",
-      mimeType: "image/jpeg",
-      parameters: {
-        lat: String(photo.latitude ?? 0),
-        lng: String(photo.longitude ?? 0),
-      },
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-      },
-    });
+  const formData = new FormData();
 
-    console.log("UPLOAD STATUS =", uploadResult.status);
-    console.log("UPLOAD RAW =", uploadResult.body);
+  formData.append("photo", {
+    uri: photo.uri,
+    name: `activity_photo_${seqNo}.jpg`,
+    type: "image/jpeg",
+  } as any);
 
-    let data: any = {};
-    try {
-      data = uploadResult.body ? JSON.parse(uploadResult.body) : {};
-    } catch {
-      data = { raw: uploadResult.body };
-    }
+  formData.append("lat", String(photo.latitude ?? 0));
+  formData.append("lng", String(photo.longitude ?? 0));
 
-    if (uploadResult.status < 200 || uploadResult.status >= 300) {
-      throw new Error(
-        typeof data?.detail === "string"
-          ? data.detail
-          : JSON.stringify(data?.detail || data)
-      );
-    }
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json"
+      // Do NOT add "Content-Type": "multipart/form-data"
+      // React Native will add boundary automatically
+    },
+    body: formData,
+  });
 
-    return data;
-  };
+  const raw = await res.text();
+
+  console.log("UPLOAD STATUS =", res.status);
+  console.log("UPLOAD RAW =", raw);
+
+  let data: any = {};
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    data = { raw };
+  }
+
+  if (!res.ok) {
+    throw new Error(
+      typeof data?.detail === "string"
+        ? data.detail
+        : JSON.stringify(data?.detail || data)
+    );
+  }
+
+  return data;
+};
 
   // ─── Effects ──────────────────────────────────────────────
   useEffect(() => {
