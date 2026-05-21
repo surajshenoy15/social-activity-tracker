@@ -5,14 +5,7 @@
     "icon": "./assets/images/app-icon.png",
     "plugins": [
       "expo-secure-store",
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "usesCleartextTraffic": true
-          }
-        }
-      ]
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {
@@ -21,7 +14,6 @@
     },
     "android": {
       "package": "com.surajshenoy15.socialactivitytracker",
-      "usesCleartextTraffic": true,
       "permissions": [
         "INTERNET",
         "CAMERA",
