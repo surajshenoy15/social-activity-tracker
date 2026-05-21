@@ -13,7 +13,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // ─── Config (same as dashboard) ────────────────────────────────
-const BASE_URL = "http://31.97.230.171:8001/api";
+const BASE_URL = "https://api.vikasanafoundation.org/api";
 
 async function getToken(): Promise<string> {
   const t1 = await AsyncStorage.getItem("access_token");

@@ -16,7 +16,7 @@ import { router } from "expo-router";
 import { ArrowLeft, Calendar, CheckCircle, Clock, FileText, XCircle, RefreshCw } from "lucide-react-native";
 
 // ─── Config ───────────────────────────────────────────────────
-const BASE_URL = "http://187.127.151.123:8001/api";
+const BASE_URL = "https://api.vikasanafoundation.org/api";
 
 // ─── Storage keys ─────────────────────────────────────────────
 const REG_PREFIX = "reg_";

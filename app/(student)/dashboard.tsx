@@ -37,7 +37,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 const VikasanaLogo = require("../../assets/images/vikasana_logo.png");
 // ─── Config ───────────────────────────────────────────────────
-const BASE_URL = "http://187.127.151.123:8001/api";
+const BASE_URL = "https://api.vikasanafoundation.org/api";
 
 // ─── Storage keys ─────────────────────────────────────────────
 const REG_PREFIX = "reg_";

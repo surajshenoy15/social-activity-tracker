@@ -7,7 +7,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as WebBrowser from "expo-web-browser";
 import { ArrowLeft, Download, FileText, Calendar, Award } from "lucide-react-native";
 
-const BASE_URL = "http://187.127.151.123:8001/api";
+const BASE_URL = "https://api.vikasanafoundation.org/api";
 
 const C = {
   navy: "#0B2D6B",

@@ -36,7 +36,7 @@ import {
 } from "lucide-react-native";
 
 // ─── Config ───────────────────────────────────────────────────
-const BASE_URL = "http://187.127.151.123:8001/api";
+const BASE_URL = "https://api.vikasanafoundation.org/api";
 const MAX_PHOTOS = 5;
 const FRONT_CAM_COUNT = 2;
 
